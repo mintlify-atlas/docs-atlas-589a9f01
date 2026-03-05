@@ -1,0 +1,242 @@
+---
+title: 'CDP Events'
+description: 'Listen to Chrome DevTools Protocol events with add_cdp_listener'
+---
+
+## Overview
+
+The `add_cdp_listener` method allows you to subscribe to Chrome DevTools Protocol (CDP) events and execute custom callbacks when these events occur. This is useful for intercepting network traffic, monitoring resource loading, tracking console messages, and more.
+
+## Enabling CDP Events
+
+To use CDP event listeners, you must enable CDP events when creating the Chrome driver:
+
+```python
+import undetected as uc
+
+driver = uc.Chrome(enable_cdp_events=True)
+```
+
+When `enable_cdp_events=True`, the driver automatically:
+- Sets up performance and browser logging capabilities
+- Starts a [Reactor](/advanced/reactor) thread to process CDP messages
+- Enables the `add_cdp_listener` method
+
+<Warning>
+If you don't set `enable_cdp_events=True`, the `add_cdp_listener` method will return `False` and no listeners will be registered.
+</Warning>
+
+## Adding Event Listeners
+
+### Method Signature
+
+```python
+driver.add_cdp_listener(event_name: str, callback: callable) -> dict | bool
+```
+
+**Parameters:**
+- `event_name` (str): The CDP event to listen for (e.g., "Network.responseReceived")
+- `callback` (callable): A function that accepts exactly one parameter - a dictionary containing the event message
+
+**Returns:**
+- Dictionary of all registered handlers if successful
+- `False` if CDP events are not enabled
+
+### Example: Network Request Monitoring
+
+```python
+import undetected as uc
+
+def handle_network_response(message):
+    """Called when a network response is received"""
+    method = message.get('method')
+    params = message.get('params', {})
+    
+    if method == 'Network.responseReceived':
+        response = params.get('response', {})
+        url = response.get('url')
+        status = response.get('status')
+        print(f"Response: {status} - {url}")
+
+driver = uc.Chrome(enable_cdp_events=True)
+driver.add_cdp_listener("Network.responseReceived", handle_network_response)
+
+driver.get("https://example.com")
+```
+
+### Example: Console Message Logging
+
+```python
+import undetected as uc
+
+def handle_console(message):
+    """Capture console.log and console.error messages"""
+    params = message.get('params', {})
+    
+    if message.get('method') == 'Runtime.consoleAPICalled':
+        console_type = params.get('type')  # 'log', 'error', 'warning', etc.
+        args = params.get('args', [])
+        
+        for arg in args:
+            if arg.get('type') == 'string':
+                print(f"[Console {console_type}]: {arg.get('value')}")
+
+driver = uc.Chrome(enable_cdp_events=True)
+driver.add_cdp_listener("Runtime.consoleAPICalled", handle_console)
+
+driver.get("https://example.com")
+```
+
+### Example: Wildcard Listener
+
+You can listen to all CDP events using the wildcard `"*"` event name:
+
+```python
+import undetected as uc
+import json
+
+def handle_all_events(message):
+    """Log all CDP events"""
+    method = message.get('method')
+    print(f"CDP Event: {method}")
+    print(json.dumps(message, indent=2))
+
+driver = uc.Chrome(enable_cdp_events=True)
+driver.add_cdp_listener("*", handle_all_events)
+
+driver.get("https://example.com")
+```
+
+## Clearing Listeners
+
+Remove all registered CDP event listeners:
+
+```python
+driver.clear_cdp_listeners()
+```
+
+This clears the handlers dictionary in the Reactor instance.
+
+## Common CDP Events
+
+Here are some useful CDP events you can listen to:
+
+| Event | Description |
+|-------|-------------|
+| `Network.requestWillBeSent` | Fired when a network request is about to be sent |
+| `Network.responseReceived` | Fired when HTTP response is available |
+| `Network.dataReceived` | Fired when data chunk is received |
+| `Network.loadingFinished` | Fired when HTTP request has finished loading |
+| `Network.loadingFailed` | Fired when HTTP request has failed |
+| `Runtime.consoleAPICalled` | Fired when console API is called (log, error, etc.) |
+| `Runtime.exceptionThrown` | Fired when unhandled exception is thrown |
+| `Page.loadEventFired` | Fired when page load event is fired |
+| `Page.frameNavigated` | Fired when frame has navigated |
+| `Security.securityStateChanged` | Fired when security state changes |
+
+## Message Structure
+
+CDP event messages received by your callback have this structure:
+
+```python
+{
+    "method": "Network.responseReceived",  # Event name
+    "params": {                            # Event-specific parameters
+        "requestId": "1000.1",
+        "loaderId": "1000.2",
+        "timestamp": 1234567890.123,
+        "type": "Document",
+        "response": {
+            "url": "https://example.com",
+            "status": 200,
+            "statusText": "OK",
+            "headers": { ... },
+            "mimeType": "text/html"
+        }
+    }
+}
+```
+
+## Advanced Example: Request Interceptor
+
+```python
+import undetected as uc
+import json
+
+class RequestMonitor:
+    def __init__(self):
+        self.requests = {}
+    
+    def handle_request_sent(self, message):
+        """Track outgoing requests"""
+        if message.get('method') == 'Network.requestWillBeSent':
+            params = message.get('params', {})
+            request_id = params.get('requestId')
+            request = params.get('request', {})
+            
+            self.requests[request_id] = {
+                'url': request.get('url'),
+                'method': request.get('method'),
+                'timestamp': params.get('timestamp')
+            }
+    
+    def handle_response_received(self, message):
+        """Match responses to requests"""
+        if message.get('method') == 'Network.responseReceived':
+            params = message.get('params', {})
+            request_id = params.get('requestId')
+            response = params.get('response', {})
+            
+            if request_id in self.requests:
+                self.requests[request_id]['status'] = response.get('status')
+                self.requests[request_id]['response_time'] = (
+                    params.get('timestamp') - 
+                    self.requests[request_id]['timestamp']
+                )
+    
+    def print_summary(self):
+        """Print all tracked requests"""
+        for req_id, data in self.requests.items():
+            print(f"{data.get('method')} {data.get('url')}")
+            print(f"  Status: {data.get('status')}")
+            print(f"  Time: {data.get('response_time', 0)*1000:.2f}ms")
+
+# Usage
+monitor = RequestMonitor()
+
+driver = uc.Chrome(enable_cdp_events=True)
+driver.add_cdp_listener("Network.requestWillBeSent", monitor.handle_request_sent)
+driver.add_cdp_listener("Network.responseReceived", monitor.handle_response_received)
+
+driver.get("https://example.com")
+monitor.print_summary()
+
+driver.quit()
+```
+
+## Implementation Details
+
+The `add_cdp_listener` method is defined in the Chrome class at `__init__.py:620`:
+
+```python
+def add_cdp_listener(self, event_name, callback):
+    if (
+        self.reactor
+        and self.reactor is not None
+        and isinstance(self.reactor, Reactor)
+    ):
+        self.reactor.add_event_handler(event_name, callback)
+        return self.reactor.handlers
+    return False
+```
+
+The method validates that:
+1. A Reactor instance exists (created when `enable_cdp_events=True`)
+2. The Reactor is properly initialized
+3. Then delegates to the Reactor's `add_event_handler` method
+
+## See Also
+
+- [Reactor Class](/advanced/reactor) - Background thread that processes CDP events
+- [CDP Class](/api/cdp) - Direct Chrome DevTools Protocol interface
+- [Chrome Options](/api/chrome-options) - Configure driver capabilities

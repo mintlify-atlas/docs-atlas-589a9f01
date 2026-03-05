@@ -1,0 +1,384 @@
+---
+title: Multiprocessing Support
+description: Use Undetected with Python's multiprocessing module to run multiple browser instances in parallel
+---
+
+Undetected supports running multiple Chrome instances in parallel using Python's `multiprocessing` module. This requires special configuration to prevent processes from conflicting when patching ChromeDriver.
+
+## The Problem
+
+By default, each Chrome instance:
+1. Creates a Patcher to download and patch ChromeDriver
+2. Modifies the binary file on disk
+3. Uses the patched binary
+
+When multiple processes do this simultaneously, they try to modify the same binary, causing:
+- File lock errors
+- Corrupted binaries
+- Race conditions
+- Crashes
+
+## The Solution: Pre-patching
+
+To use multiprocessing safely:
+
+1. **Patch once** before spawning processes using `Patcher.patch()`
+2. **Set `user_multi_procs=True`** when creating Chrome instances
+3. **All processes share** the same patched binary
+
+## Complete Example
+
+```python
+import undetected as uc
+from undetected.patcher import Patcher
+import multiprocessing as mp
+
+def worker(idx: int):
+    """Worker function that runs in each process"""
+    driver = uc.Chrome(user_multi_procs=True)
+    driver.get("https://example.com")
+    print(f"Process {idx}: Title = {driver.title}")
+    driver.quit()
+
+if __name__ == "__main__":
+    # Step 1: Patch ChromeDriver once before multiprocessing
+    Patcher.patch()
+    
+    # Step 2: Create and start worker processes
+    processes = [mp.Process(target=worker, args=(i,)) for i in range(4)]
+    
+    for p in processes:
+        p.start()
+    
+    for p in processes:
+        p.join()
+    
+    print("All processes completed!")
+```
+
+## How It Works
+
+### Step 1: Pre-patch ChromeDriver
+
+```python
+Patcher.patch()
+```
+
+This:
+- Detects your Chrome version
+- Downloads the matching ChromeDriver
+- Patches it to remove detection vectors
+- Saves it to the data directory
+- Cleans up old binaries
+
+### Step 2: Use Pre-patched Binary
+
+```python
+driver = uc.Chrome(user_multi_procs=True)
+```
+
+When `user_multi_procs=True`:
+- Chrome skips automatic patching
+- Verifies a patched binary exists
+- Uses the existing patched binary
+- Multiple processes safely share the same file
+
+## The `user_multi_procs` Parameter
+
+**Type:** `bool`  
+**Default:** `False`
+
+### When False (Default)
+
+```python
+driver = uc.Chrome()  # user_multi_procs=False
+```
+
+- Automatically downloads and patches ChromeDriver
+- Creates a unique binary with random prefix
+- Deletes the binary on cleanup
+- **DO NOT use in multiprocessing**
+
+### When True
+
+```python
+driver = uc.Chrome(user_multi_procs=True)
+```
+
+- Skips automatic patching
+- Looks for existing patched binary
+- Raises exception if no patched binary found
+- Keeps the binary after cleanup (shared by all processes)
+- **Required for multiprocessing**
+
+## Error Handling
+
+If you forget to pre-patch:
+
+```python
+def worker():
+    # This will raise an exception!
+    driver = uc.Chrome(user_multi_procs=True)
+
+if __name__ == "__main__":
+    # Forgot to call Patcher.patch()!
+    p = mp.Process(target=worker)
+    p.start()
+```
+
+**Error:**
+```
+Exception: No undetected chromedriver binary were found.
+Call `Patcher.patch()` outside of multiprocessing/threading implementation.
+```
+
+**Fix:**
+```python
+if __name__ == "__main__":
+    Patcher.patch()  # Add this line!
+    p = mp.Process(target=worker)
+    p.start()
+```
+
+## Using Different Chrome Versions
+
+If you have multiple Chrome installations:
+
+```python
+if __name__ == "__main__":
+    # Patch for specific Chrome version
+    Patcher.patch(browser_executable_path="/usr/bin/google-chrome")
+    
+    # Workers use that version
+    processes = [mp.Process(target=worker, args=(i,)) for i in range(4)]
+    for p in processes:
+        p.start()
+```
+
+## Multithreading vs Multiprocessing
+
+### Multithreading (threading module)
+
+```python
+import threading
+import undetected as uc
+
+def worker():
+    driver = uc.Chrome()  # user_multi_procs not needed
+    driver.get("https://example.com")
+    driver.quit()
+
+threads = [threading.Thread(target=worker) for _ in range(4)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+```
+
+<Note>
+Multithreading works without `user_multi_procs=True` because threads share memory. However, multiprocessing is recommended for CPU-bound tasks.
+</Note>
+
+### Multiprocessing (multiprocessing module)
+
+```python
+import multiprocessing as mp
+import undetected as uc
+from undetected.patcher import Patcher
+
+def worker():
+    driver = uc.Chrome(user_multi_procs=True)  # Required!
+    driver.get("https://example.com")
+    driver.quit()
+
+if __name__ == "__main__":
+    Patcher.patch()  # Required!
+    processes = [mp.Process(target=worker) for _ in range(4)]
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
+```
+
+## Process Pools
+
+Using `multiprocessing.Pool`:
+
+```python
+import undetected as uc
+from undetected.patcher import Patcher
+import multiprocessing as mp
+
+def scrape_url(url: str) -> str:
+    driver = uc.Chrome(user_multi_procs=True)
+    driver.get(url)
+    title = driver.title
+    driver.quit()
+    return title
+
+if __name__ == "__main__":
+    Patcher.patch()
+    
+    urls = [
+        "https://example.com",
+        "https://google.com",
+        "https://github.com",
+        "https://stackoverflow.com",
+    ]
+    
+    with mp.Pool(processes=4) as pool:
+        titles = pool.map(scrape_url, urls)
+    
+    for url, title in zip(urls, titles):
+        print(f"{url}: {title}")
+```
+
+## Context Managers
+
+Using `with` statements in workers:
+
+```python
+def worker(url: str):
+    with uc.Chrome(user_multi_procs=True) as driver:
+        driver.get(url)
+        print(f"Title: {driver.title}")
+    # driver.quit() called automatically
+
+if __name__ == "__main__":
+    Patcher.patch()
+    
+    urls = ["https://example.com", "https://google.com"]
+    processes = [mp.Process(target=worker, args=(url,)) for url in urls]
+    
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
+```
+
+## Best Practices
+
+<Check>
+✓ Always call `Patcher.patch()` in the main process before spawning workers
+</Check>
+
+<Check>
+✓ Always set `user_multi_procs=True` in worker processes
+</Check>
+
+<Check>
+✓ Use `if __name__ == "__main__":` guard for multiprocessing code
+</Check>
+
+<Check>
+✓ Clean up drivers with `.quit()` or use context managers
+</Check>
+
+<Warning>
+✗ Don't call `Patcher.patch()` inside worker functions
+</Warning>
+
+<Warning>
+✗ Don't forget `user_multi_procs=True` in workers
+</Warning>
+
+<Warning>
+✗ Don't use the same ChromeOptions instance across processes
+</Warning>
+
+## Common Pitfalls
+
+### Pitfall 1: Patching Inside Workers
+
+```python
+# ❌ WRONG
+def worker():
+    Patcher.patch()  # Don't do this!
+    driver = uc.Chrome(user_multi_procs=True)
+
+# ✅ CORRECT
+if __name__ == "__main__":
+    Patcher.patch()  # Patch once in main process
+    
+    def worker():
+        driver = uc.Chrome(user_multi_procs=True)
+```
+
+### Pitfall 2: Forgetting user_multi_procs
+
+```python
+# ❌ WRONG
+def worker():
+    driver = uc.Chrome()  # Will try to patch again!
+
+# ✅ CORRECT
+def worker():
+    driver = uc.Chrome(user_multi_procs=True)
+```
+
+### Pitfall 3: No Main Guard
+
+```python
+# ❌ WRONG - causes infinite recursion on Windows
+Patcher.patch()
+processes = [mp.Process(target=worker) for _ in range(4)]
+
+# ✅ CORRECT
+if __name__ == "__main__":
+    Patcher.patch()
+    processes = [mp.Process(target=worker) for _ in range(4)]
+```
+
+### Pitfall 4: Shared ChromeOptions
+
+```python
+# ❌ WRONG - ChromeOptions cannot be reused
+options = uc.ChromeOptions()
+
+def worker():
+    driver = uc.Chrome(options=options, user_multi_procs=True)  # Error!
+
+# ✅ CORRECT - Create options inside worker
+def worker():
+    options = uc.ChromeOptions()
+    options.add_argument("--window-size=1920,1080")
+    driver = uc.Chrome(options=options, user_multi_procs=True)
+```
+
+## Performance Considerations
+
+### Process Count
+
+More processes ≠ better performance. Consider:
+- **CPU cores:** Don't exceed your CPU core count
+- **Memory:** Each Chrome instance uses ~100-300MB RAM
+- **Website limits:** Some sites rate-limit by IP
+
+```python
+import os
+
+# Use number of CPU cores
+num_processes = os.cpu_count()
+processes = [mp.Process(target=worker, args=(i,)) for i in range(num_processes)]
+```
+
+### Resource Cleanup
+
+Always clean up resources to prevent memory leaks:
+
+```python
+def worker():
+    driver = None
+    try:
+        driver = uc.Chrome(user_multi_procs=True)
+        driver.get("https://example.com")
+    finally:
+        if driver:
+            driver.quit()
+```
+
+## Related
+
+- [Chrome Driver](/core/chrome-driver) - Learn about the `user_multi_procs` parameter
+- [Patcher](/core/patcher) - Understand how patching works
+- [Chrome Options](/core/options) - Configure browser behavior

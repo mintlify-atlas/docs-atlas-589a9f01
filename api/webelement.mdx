@@ -1,0 +1,130 @@
+---
+title: WebElement Classes
+description: Custom WebElement classes with enhanced functionality
+---
+
+## Overview
+
+The Undetected library provides custom WebElement classes that extend Selenium's standard WebElement with additional functionality for safer interactions and better debugging capabilities.
+
+## WebElement
+
+Enhanced WebElement class that extends `selenium.webdriver.remote.webelement.WebElement` with safe click operations and child element queries.
+
+### Methods
+
+#### `click_safe()`
+
+Performs a click operation followed by a driver reconnection to maintain stability.
+
+```python
+element.click_safe()
+```
+
+This method calls the standard `click()` method and then reconnects the parent driver with a 0.1 second delay, helping to maintain connection stability after interactions.
+
+#### `children(tag=None, recursive=False)`
+
+Returns direct child elements of the current element.
+
+<ParamField path="tag" type="str" optional>
+  If supplied, returns only child elements with the specified tag name (e.g., 'div', 'a', 'img')
+</ParamField>
+
+<ParamField path="recursive" type="bool" default="False">
+  If True, returns all descendant elements recursively instead of just direct children
+</ParamField>
+
+**Returns:** List of WebElement objects
+
+```python
+# Get all direct children
+children = element.children()
+
+# Get only <a> tag children
+links = element.children(tag='a')
+
+# Get all descendant <img> elements recursively
+images = element.children(tag='img', recursive=True)
+```
+
+**Implementation details:**
+- Uses JavaScript execution to query child elements
+- Tag filtering is case-insensitive (automatically converts to uppercase)
+- Recursive mode uses the `_recursive_children` helper function
+
+---
+
+## UCWebElement
+
+Custom WebElement class that provides enhanced representation for better debugging in interactive environments.
+
+### Overview
+
+`UCWebElement` extends `WebElement` with improved string representation, making it easier to view elements when working in an interactive environment like Jupyter notebooks or Python REPL.
+
+**Standard WebElement representation:**
+```
+<selenium.webdriver.remote.webelement.WebElement (session="85ff0f671512fa535630e71ee951b1f2", element="6357cb55-92c3-4c0f-9416-b174f9c1b8c4")>
+```
+
+**UCWebElement representation:**
+```
+<WebElement(<a class="mobile-show-inline-block mc-update-infos init-ok" href="#" id="main-cat-switcher-mobile">)>
+```
+
+### Properties
+
+#### `attrs`
+
+Returns a dictionary containing all HTML attributes of the element.
+
+```python
+element = driver.find_element(By.ID, "my-button")
+attributes = element.attrs
+
+# Example output:
+# {'id': 'my-button', 'class': 'btn btn-primary', 'type': 'submit'}
+```
+
+**Returns:** Dictionary with attribute names as keys and attribute values as strings
+
+**Implementation details:**
+- Lazily loaded on first access
+- Cached after first retrieval
+- Uses JavaScript execution to extract all element attributes
+
+### Methods
+
+#### `__repr__()`
+
+Returns a human-readable string representation of the element showing its tag name and attributes.
+
+```python
+print(element)
+# Output: UCWebElement <button id="submit-btn" class="primary" type="submit">
+```
+
+---
+
+## Helper Functions
+
+### `_recursive_children(element, tag=None, _results=None)`
+
+Internal helper function that recursively collects all descendant elements.
+
+<ParamField path="element" type="WebElement" required>
+  The WebElement to find children below
+</ParamField>
+
+<ParamField path="tag" type="str" optional>
+  If provided, returns only elements with the specified tag name (e.g., 'a', 'img')
+</ParamField>
+
+<ParamField path="_results" type="set" optional>
+  Internal parameter for recursion - do not use directly
+</ParamField>
+
+**Returns:** Set of WebElement objects
+
+This function is used internally by the `children()` method when `recursive=True` is specified.

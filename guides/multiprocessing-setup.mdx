@@ -1,0 +1,326 @@
+---
+title: Multiprocessing Setup
+description: Learn how to properly configure Undetected for multiprocessing and multithreading scenarios
+---
+
+## Overview
+
+When running multiple Chrome instances in parallel using multiprocessing or multithreading, you must follow a specific setup pattern to prevent binary conflicts. Multiple processes attempting to download and patch the same ChromeDriver binary simultaneously will cause failures.
+
+<Warning>
+Without proper setup, multiprocessing will fail with the error:
+```
+No undetected chromedriver binary were found.
+Call `Patcher.patch()` outside of multiprocessing/threading implementation.
+```
+</Warning>
+
+## The Correct Pattern
+
+The key is to call `Patcher.patch()` **once** before spawning multiple processes, then use `user_multi_procs=True` in each worker process.
+
+### Complete Example
+
+Here's the exact pattern from the source code:
+
+```python
+import undetected as uc
+from undetected.patcher import Patcher
+import multiprocessing as mp
+
+def worker(idx: int):
+    driver = uc.Chrome(user_multi_procs=True)
+    driver.get("https://example.com")
+    print(f"Process {idx}: {driver.title}")
+    driver.quit()
+
+if __name__ == "__main__":
+    Patcher.patch()  # Patch a unique undetected chromedriver ONCE
+
+    processes = [mp.Process(target=worker, args=(i,)) for i in range(4)]
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
+```
+
+## How It Works
+
+<Steps>
+  <Step title="Pre-patch the binary">
+    `Patcher.patch()` downloads and patches a ChromeDriver binary before any processes are spawned.
+    
+    ```python
+    from undetected.patcher import Patcher
+    
+    if __name__ == "__main__":
+        Patcher.patch()
+    ```
+  </Step>
+  
+  <Step title="Create worker functions">
+    Each worker creates a Chrome instance with `user_multi_procs=True`:
+    
+    ```python
+    def worker(idx: int):
+        driver = uc.Chrome(user_multi_procs=True)
+        # ... do work ...
+        driver.quit()
+    ```
+  </Step>
+  
+  <Step title="Spawn processes">
+    Create and start your processes as normal:
+    
+    ```python
+    processes = [mp.Process(target=worker, args=(i,)) for i in range(4)]
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
+    ```
+  </Step>
+</Steps>
+
+## Why This is Required
+
+### Without user_multi_procs (Default Behavior)
+
+By default, each `uc.Chrome()` instance:
+1. Downloads a fresh ChromeDriver binary
+2. Patches it to remove detection signatures
+3. Uses it for the session
+4. Deletes it when `quit()` is called
+
+This works perfectly for single-process scenarios but causes race conditions in multiprocessing.
+
+### With user_multi_procs=True
+
+When you set `user_multi_procs=True`:
+1. The instance skips the automatic patching step (undetected/__init__.py:211-212)
+2. It uses the pre-patched binary created by `Patcher.patch()`
+3. The binary is shared across all processes
+4. No race conditions or file conflicts occur
+
+## Advanced Multiprocessing Example
+
+Here's a more complete example with error handling and result collection:
+
+```python
+import undetected as uc
+from undetected.patcher import Patcher
+import multiprocessing as mp
+
+def worker(idx: int, result_queue):
+    """Worker function that scrapes a page and returns results."""
+    try:
+        options = uc.ChromeOptions()
+        options.add_argument("--headless=new")
+        
+        driver = uc.Chrome(
+            options=options,
+            user_multi_procs=True
+        )
+        
+        driver.get("https://example.com")
+        title = driver.title
+        driver.quit()
+        
+        result_queue.put((idx, True, title))
+    except Exception as e:
+        result_queue.put((idx, False, str(e)))
+
+if __name__ == "__main__":
+    # Step 1: Patch the binary once
+    Patcher.patch()
+    
+    # Step 2: Set up multiprocessing
+    process_count = 4
+    ctx = mp.get_context("spawn")
+    result_queue = ctx.Queue()
+    
+    # Step 3: Create and start processes
+    processes = [
+        ctx.Process(target=worker, args=(i, result_queue))
+        for i in range(process_count)
+    ]
+    
+    for p in processes:
+        p.start()
+    
+    # Step 4: Wait for completion
+    for p in processes:
+        p.join(timeout=60)
+    
+    # Step 5: Collect results
+    results = [result_queue.get(timeout=5) for _ in range(process_count)]
+    
+    # Step 6: Process results
+    for idx, success, data in results:
+        if success:
+            print(f"Process {idx}: {data}")
+        else:
+            print(f"Process {idx} failed: {data}")
+```
+
+## Using the Spawn Context
+
+Always use the `spawn` context for maximum compatibility:
+
+```python
+import multiprocessing as mp
+
+if __name__ == "__main__":
+    ctx = mp.get_context("spawn")
+    # Use ctx.Process() instead of mp.Process()
+    p = ctx.Process(target=worker)
+```
+
+This ensures clean process creation on all platforms (Windows, Linux, macOS).
+
+## Common Patterns
+
+### Pattern 1: Parallel Scraping
+
+```python
+import undetected as uc
+from undetected.patcher import Patcher
+import multiprocessing as mp
+
+def scrape_url(url: str, result_queue):
+    driver = uc.Chrome(user_multi_procs=True)
+    driver.get(url)
+    result_queue.put({"url": url, "title": driver.title})
+    driver.quit()
+
+if __name__ == "__main__":
+    Patcher.patch()
+    
+    urls = ["https://example1.com", "https://example2.com", "https://example3.com"]
+    ctx = mp.get_context("spawn")
+    result_queue = ctx.Queue()
+    
+    processes = [ctx.Process(target=scrape_url, args=(url, result_queue)) for url in urls]
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
+    
+    results = [result_queue.get() for _ in urls]
+    print(results)
+```
+
+### Pattern 2: Worker Pool
+
+```python
+import undetected as uc
+from undetected.patcher import Patcher
+from multiprocessing import Pool
+
+def process_item(item):
+    driver = uc.Chrome(user_multi_procs=True)
+    driver.get(item["url"])
+    result = {"id": item["id"], "title": driver.title}
+    driver.quit()
+    return result
+
+if __name__ == "__main__":
+    Patcher.patch()
+    
+    items = [
+        {"id": 1, "url": "https://example1.com"},
+        {"id": 2, "url": "https://example2.com"},
+        {"id": 3, "url": "https://example3.com"},
+    ]
+    
+    with Pool(processes=3) as pool:
+        results = pool.map(process_item, items)
+    
+    print(results)
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Binary not found error">
+    **Error:** `No undetected chromedriver binary were found`
+    
+    **Solution:** Make sure `Patcher.patch()` is called **before** spawning processes:
+    
+    ```python
+    if __name__ == "__main__":
+        Patcher.patch()  # Must be here
+        # Then spawn processes
+    ```
+  </Accordion>
+  
+  <Accordion title="Permission errors on binary">
+    **Error:** `PermissionError: [Errno 13] Permission denied`
+    
+    **Solution:** This happens when processes try to modify the same binary. Ensure `user_multi_procs=True` is set:
+    
+    ```python
+    driver = uc.Chrome(user_multi_procs=True)
+    ```
+  </Accordion>
+  
+  <Accordion title="Processes hang or timeout">
+    **Problem:** Processes don't complete
+    
+    **Solutions:**
+    - Use headless mode to reduce resource usage
+    - Limit the number of concurrent processes
+    - Add timeouts to `join()` calls
+    - Ensure `driver.quit()` is always called (use try/finally)
+  </Accordion>
+</AccordionGroup>
+
+## Platform-Specific Notes
+
+### Windows
+
+On Windows, the `spawn` context is the default. Always use `if __name__ == "__main__":` to prevent infinite process spawning.
+
+### Linux/macOS
+
+While `fork` is the default on Unix systems, `spawn` is recommended for consistency:
+
+```python
+ctx = mp.get_context("spawn")  # Explicit spawn context
+```
+
+## Performance Considerations
+
+- Each Chrome instance uses ~100-200MB of RAM
+- Limit concurrent instances based on available system resources
+- Use headless mode when visual rendering isn't needed
+- Consider using a process pool instead of spawning processes individually
+
+## What Not to Do
+
+<Warning>
+**Don't** create Chrome instances without `user_multi_procs=True` in workers:
+
+```python
+# ❌ WRONG
+def worker():
+    driver = uc.Chrome()  # Missing user_multi_procs=True
+    # ...
+```
+
+**Don't** call `Patcher.patch()` inside worker functions:
+
+```python
+# ❌ WRONG  
+def worker():
+    Patcher.patch()  # This should be called BEFORE spawning
+    driver = uc.Chrome(user_multi_procs=True)
+    # ...
+```
+</Warning>
+
+## Next Steps
+
+- Review [Basic Usage](/guides/basic-usage) for single-instance patterns
+- Learn about [Custom Options](/guides/custom-options) for worker configuration
+- Check [Troubleshooting](/guides/troubleshooting) for more common issues

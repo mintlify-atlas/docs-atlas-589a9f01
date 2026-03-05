@@ -1,0 +1,352 @@
+---
+title: Reactor
+description: Event-driven handler for Chrome DevTools Protocol (CDP) events
+---
+
+## Overview
+
+The `Reactor` class provides asynchronous event handling for Chrome DevTools Protocol (CDP) events. It runs in a background thread and allows you to subscribe to browser events like network requests, console logs, and more.
+
+```python
+import undetected as uc
+
+def handle_response(message):
+    print(f"Response: {message}")
+
+driver = uc.Chrome(enable_cdp_events=True)
+driver.add_cdp_listener('Network.responseReceived', handle_response)
+```
+
+## Constructor
+
+### Reactor()
+
+Creates a new Reactor instance. This is typically instantiated automatically by the Chrome class.
+
+```python
+Reactor(driver: Chrome)
+```
+
+<ParamField path="driver" type="Chrome" required>
+  The Chrome driver instance to monitor for CDP events.
+</ParamField>
+
+**Internal Usage:** The Reactor is created automatically when you set `enable_cdp_events=True`:
+
+```python
+driver = uc.Chrome(enable_cdp_events=True)
+# driver.reactor is now available
+```
+
+## Methods
+
+### add_event_handler()
+
+Registers a callback function for a specific CDP event.
+
+```python
+reactor.add_event_handler(method_name: str, callback: callable)
+```
+
+<ParamField path="method_name" type="str" required>
+  The CDP event name (e.g., "Network.responseReceived", "Console.messageAdded"). Case-insensitive.
+</ParamField>
+
+<ParamField path="callback" type="callable" required>
+  Function that accepts one parameter: the message dictionary containing event data.
+</ParamField>
+
+```python
+def on_network_response(message):
+    params = message.get('params', {})
+    response = params.get('response', {})
+    print(f"URL: {response.get('url')}")
+    print(f"Status: {response.get('status')}")
+
+driver = uc.Chrome(enable_cdp_events=True)
+driver.reactor.add_event_handler('Network.responseReceived', on_network_response)
+driver.get('https://example.com')
+```
+
+---
+
+### start()
+
+Starts the reactor thread to begin listening for CDP events.
+
+```python
+reactor.start()
+```
+
+**Internal Usage:** Called automatically by the Chrome class when `enable_cdp_events=True`.
+
+```python
+# Automatic start
+driver = uc.Chrome(enable_cdp_events=True)
+# reactor.start() is called internally
+```
+
+---
+
+### run()
+
+The main thread execution method. Sets up the event loop and calls `listen()`.
+
+```python
+reactor.run()
+```
+
+**Internal Method:** This is the threading.Thread target method and is called automatically.
+
+---
+
+### listen()
+
+Async method that continuously monitors CDP events and dispatches them to registered handlers.
+
+```python
+async def listen()
+```
+
+**Internal Method:** Runs in the background thread's event loop.
+
+## Attributes
+
+<ParamField path="driver" type="Chrome">
+  The Chrome driver instance being monitored.
+</ParamField>
+
+<ParamField path="loop" type="asyncio.AbstractEventLoop">
+  The asyncio event loop used for async operations.
+</ParamField>
+
+<ParamField path="lock" type="threading.Lock">
+  Thread lock for synchronizing access to shared resources.
+</ParamField>
+
+<ParamField path="event" type="threading.Event">
+  Threading event used to signal shutdown.
+</ParamField>
+
+<ParamField path="daemon" type="bool">
+  Always `True` - the reactor runs as a daemon thread.
+</ParamField>
+
+<ParamField path="handlers" type="dict">
+  Dictionary mapping event names (lowercase) to callback functions.
+</ParamField>
+
+<ParamField path="running" type="bool">
+  Returns `True` if the reactor is currently running, `False` otherwise (property).
+</ParamField>
+
+## CDP Event Examples
+
+### Network Monitoring
+
+Capture all network requests and responses:
+
+```python
+import undetected as uc
+
+def on_request(message):
+    params = message.get('params', {})
+    request = params.get('request', {})
+    print(f"Request: {request.get('method')} {request.get('url')}")
+
+def on_response(message):
+    params = message.get('params', {})
+    response = params.get('response', {})
+    print(f"Response: {response.get('status')} {response.get('url')}")
+
+driver = uc.Chrome(enable_cdp_events=True)
+driver.add_cdp_listener('Network.requestWillBeSent', on_request)
+driver.add_cdp_listener('Network.responseReceived', on_response)
+
+driver.get('https://example.com')
+```
+
+### Console Message Capture
+
+```python
+def on_console(message):
+    params = message.get('params', {})
+    entry = params.get('entry', {})
+    print(f"Console: [{entry.get('level')}] {entry.get('text')}")
+
+driver = uc.Chrome(enable_cdp_events=True)
+driver.reactor.add_event_handler('Log.entryAdded', on_console)
+
+driver.get('https://example.com')
+driver.execute_script('console.log("Hello from browser")')
+```
+
+### JavaScript Errors
+
+```python
+def on_exception(message):
+    params = message.get('params', {})
+    exception_details = params.get('exceptionDetails', {})
+    print(f"JS Error: {exception_details}")
+
+driver = uc.Chrome(enable_cdp_events=True)
+driver.reactor.add_event_handler('Runtime.exceptionThrown', on_exception)
+
+driver.get('https://example.com')
+```
+
+### Catch-All Handler
+
+Use `"*"` as the event name to receive all CDP events:
+
+```python
+def on_any_event(message):
+    method = message.get('method')
+    print(f"CDP Event: {method}")
+
+driver = uc.Chrome(enable_cdp_events=True)
+driver.reactor.add_event_handler('*', on_any_event)
+
+driver.get('https://example.com')
+```
+
+## Event Message Structure
+
+CDP events are delivered as dictionaries with the following structure:
+
+```python
+{
+    "method": "Network.responseReceived",
+    "params": {
+        "requestId": "1000.45",
+        "loaderId": "1000.1",
+        "timestamp": 123456.789,
+        "type": "Document",
+        "response": {
+            "url": "https://example.com/",
+            "status": 200,
+            "statusText": "OK",
+            "headers": {...},
+            "mimeType": "text/html",
+            "connectionReused": True,
+            "connectionId": 123,
+            "encodedDataLength": 1234,
+            "securityState": "secure"
+        },
+        "frameId": "ABC123"
+    }
+}
+```
+
+## Common CDP Events
+
+Here are some commonly used CDP events:
+
+### Network Events
+- `Network.requestWillBeSent` - Before a network request is sent
+- `Network.responseReceived` - When response headers are received  
+- `Network.loadingFinished` - When a request completes successfully
+- `Network.loadingFailed` - When a request fails
+- `Network.dataReceived` - When response data is received
+
+### Console Events
+- `Runtime.consoleAPICalled` - When console methods are called
+- `Log.entryAdded` - When log entries are added
+
+### Page Events
+- `Page.loadEventFired` - When page load event fires
+- `Page.domContentEventFired` - When DOM content is loaded
+- `Page.frameNavigated` - When frame navigation occurs
+
+### Runtime Events
+- `Runtime.exceptionThrown` - When JavaScript exception occurs
+- `Runtime.executionContextCreated` - When execution context is created
+
+## Performance Considerations
+
+<Warning>
+  CDP event handling can generate significant overhead. The reactor fetches performance logs every second, which may impact performance for long-running sessions.
+</Warning>
+
+```python
+# Event callbacks should be fast
+def fast_callback(message):
+    # Quick processing
+    url = message.get('params', {}).get('response', {}).get('url')
+    print(url)
+
+# Avoid slow operations in callbacks
+def slow_callback(message):  # Not recommended!
+    # Expensive operation
+    result = expensive_computation(message)
+    write_to_database(result)
+```
+
+For expensive operations, consider using a queue:
+
+```python
+import queue
+import threading
+
+event_queue = queue.Queue()
+
+def quick_callback(message):
+    event_queue.put(message)  # Fast operation
+
+def process_events():
+    while True:
+        message = event_queue.get()
+        # Expensive processing here
+        expensive_operation(message)
+
+processor = threading.Thread(target=process_events, daemon=True)
+processor.start()
+
+driver = uc.Chrome(enable_cdp_events=True)
+driver.add_cdp_listener('Network.responseReceived', quick_callback)
+```
+
+## Thread Safety
+
+The Reactor runs in a separate daemon thread and uses locks to ensure thread safety:
+
+```python
+# Thread-safe access to handlers
+with reactor.lock:
+    handler_count = len(reactor.handlers)
+    print(f"Registered handlers: {handler_count}")
+```
+
+## Stopping the Reactor
+
+The reactor automatically stops when the driver quits:
+
+```python
+driver = uc.Chrome(enable_cdp_events=True)
+# ... use driver ...
+driver.quit()  # Reactor stops automatically
+```
+
+To manually signal shutdown:
+
+```python
+driver.reactor.event.set()  # Signal reactor to stop
+```
+
+## Important Notes
+
+<Info>
+  The Reactor requires `enable_cdp_events=True` when creating the Chrome driver. Without this, the reactor will not be created.
+</Info>
+
+<Note>
+  Event handler callbacks are executed in the reactor's thread pool executor, not the main thread. Keep this in mind when accessing shared resources.
+</Note>
+
+<Warning>
+  Event names are case-insensitive. "Network.responseReceived" and "network.responsereceived" are treated as the same event.
+</Warning>
+
+<Info>
+  The wildcard handler `"*"` receives all CDP events. Use this for debugging or comprehensive event logging, but be aware of the performance impact.
+</Info>

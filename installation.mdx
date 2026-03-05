@@ -1,0 +1,127 @@
+---
+title: Installation
+description: Install Undetected and set up your development environment
+---
+
+## Requirements
+
+Before installing Undetected, ensure your system meets these requirements:
+
+- **Python**: Version 3.10 or higher (< 4.0)
+- **Chrome/Chromium**: A compatible Chromium-based browser installed on your system
+- **pip**: Python package installer
+
+<Note>
+  Undetected automatically detects your installed Chrome version and downloads the matching ChromeDriver. You don't need to manually install ChromeDriver.
+</Note>
+
+## Install via pip
+
+Install Undetected using pip:
+
+```bash
+pip install undetected
+```
+
+This will install Undetected along with its required dependencies:
+
+- `selenium` (^4.39.0) - Core WebDriver functionality
+- `requests` (^2.32.3) - HTTP library for downloading ChromeDriver
+- `websockets` (^15.0) - WebSocket support for CDP communication
+- `packaging` (^24.0) - Version parsing utilities
+
+## Verify Installation
+
+After installation, verify that Undetected is working correctly:
+
+```python
+import undetected as uc
+
+# Create a Chrome instance
+driver = uc.Chrome()
+
+# Navigate to a test page
+driver.get("https://www.google.com")
+
+# Print the page title
+print(f"Page title: {driver.title}")
+
+# Clean up
+driver.quit()
+```
+
+If this script runs without errors and prints the Google homepage title, your installation is successful!
+
+<Steps>
+  <Step title="First Run">
+    On first run, Undetected will automatically download and patch the appropriate ChromeDriver version for your browser. This may take a few moments.
+  </Step>
+  
+  <Step title="Binary Caching">
+    The patched ChromeDriver is cached in your system's application data directory for reuse:
+    - **Windows**: `%APPDATA%/roaming/undetected`
+    - **macOS**: `~/Library/Application Support/undetected`
+    - **Linux**: `~/.local/share/undetected`
+  </Step>
+  
+  <Step title="Subsequent Runs">
+    Future runs will use the cached binary, making startup much faster.
+  </Step>
+</Steps>
+
+## Development Installation
+
+If you want to contribute to Undetected or run from source:
+
+```bash
+# Clone the repository
+git clone https://github.com/carl0smat3us/undetected.git
+cd undetected
+
+# Install Poetry (if not already installed)
+pip install poetry
+
+# Install dependencies
+poetry install
+
+# Activate the virtual environment
+poetry shell
+```
+
+## Troubleshooting
+
+### Chrome Not Found
+
+If you get an error about Chrome not being found, ensure Chrome or a Chromium-based browser is installed on your system. You can specify a custom browser path:
+
+```python
+driver = uc.Chrome(browser_executable_path="/path/to/chrome")
+```
+
+### Permission Errors on Linux
+
+If running as root on Linux, Chrome requires the `--no-sandbox` flag, which Undetected enables by default. However, it's recommended to run as a non-root user when possible.
+
+### ChromeDriver Download Fails
+
+If ChromeDriver download fails due to network issues:
+
+1. Check your internet connection
+2. Verify you can access https://chromedriver.chromium.org
+3. Consider using a custom driver path with pre-downloaded ChromeDriver:
+
+```python
+driver = uc.Chrome(driver_executable_path="/path/to/chromedriver")
+```
+
+### Version Compatibility Issues
+
+Ensure your Chrome version is up to date. Very old Chrome versions may have compatibility issues. You can check your Chrome version by visiting `chrome://version` in your browser.
+
+## Next Steps
+
+Now that Undetected is installed, learn how to use it:
+
+<Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+  Get started with basic usage examples and best practices
+</Card>

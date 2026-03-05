@@ -1,0 +1,94 @@
+---
+title: Introduction
+description: An undetectable Selenium ChromeDriver replacement that bypasses bot detection systems
+---
+
+## What is Undetected?
+
+Undetected is a Python library that provides a drop-in replacement for Selenium's ChromeDriver, designed to bypass sophisticated bot detection systems used by websites. It's a fork of the popular `undetected-chromedriver` project, optimized for compatibility with Chromium-based browsers including Chrome and Brave.
+
+## Why Undetected?
+
+Modern websites employ advanced bot detection mechanisms like CloudFlare, Imperva, and hCaptcha to identify and block automated browser sessions. Standard Selenium WebDriver implementations are easily detected through various fingerprinting techniques that identify automation characteristics.
+
+Undetected solves this problem by:
+
+- **Automatic ChromeDriver Patching**: Downloads and patches ChromeDriver binaries to remove automation indicators
+- **Stealth Configuration**: Applies optimized browser settings that reduce detection fingerprints
+- **CDP Integration**: Utilizes Chrome DevTools Protocol to modify browser properties at runtime
+- **Headless Support**: Works in both headed and headless modes with anti-detection measures
+- **Multiprocessing Ready**: Supports parallel execution across multiple processes
+
+<Note>
+  While Undetected significantly reduces detection risk, results may vary depending on the target website's detection algorithms. No guarantees are given, but the library is actively maintained with ongoing improvements.
+</Note>
+
+## Key Features
+
+### Drop-in Replacement
+
+Undetected extends Selenium's WebDriver class, meaning you can use all standard Selenium methods and features you're already familiar with:
+
+```python
+import undetected as uc
+
+driver = uc.Chrome()
+driver.get("https://example.com")
+element = driver.find_element("css selector", ".my-class")
+element.click()
+driver.quit()
+```
+
+### Automatic ChromeDriver Management
+
+No need to manually download or manage ChromeDriver versions. The library automatically:
+- Detects your installed Chrome/Chromium version
+- Downloads the matching ChromeDriver version
+- Patches the binary to remove automation signatures
+- Caches binaries for reuse
+
+### Advanced Customization
+
+While Undetected works out of the box with sensible defaults, it offers extensive customization options:
+
+- Custom user data directories for persistent browser profiles
+- CDP event listeners for advanced browser automation
+- Configurable browser and driver executable paths
+- Support for Chrome options and capabilities
+
+<Warning>
+  Heavy customizations may increase the risk of detection. The library is designed to work best with default settings, as any modifications could trigger bot mitigation systems.
+</Warning>
+
+## Use Cases
+
+- **Web Scraping**: Extract data from websites with bot protection
+- **Automated Testing**: Test web applications that use anti-bot measures
+- **Data Collection**: Gather information from protected sources
+- **Browser Automation**: Automate tasks on websites with CloudFlare or similar protections
+- **Research**: Study bot detection mechanisms and evasion techniques
+
+## Browser Compatibility
+
+Undetected supports Chromium-based browsers including:
+
+- Google Chrome
+- Brave Browser
+- Microsoft Edge
+- Other Chromium derivatives
+
+## Python Requirements
+
+- **Python Version**: 3.10 or higher (< 4.0)
+- **Operating Systems**: Windows, macOS, Linux
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Undetected and verify your setup
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get started with your first undetected browser session
+  </Card>
+</CardGroup>

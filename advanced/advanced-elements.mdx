@@ -1,0 +1,382 @@
+---
+title: 'Advanced Elements'
+description: 'Enhanced WebElement representation for easier debugging'
+---
+
+## Overview
+
+The `advanced_elements` parameter enables an enhanced WebElement class that provides more readable and informative element representations, especially useful when working in interactive environments like Jupyter notebooks or Python REPL.
+
+## Enabling Advanced Elements
+
+Set `advanced_elements=True` when creating the Chrome driver:
+
+```python
+import undetected as uc
+
+driver = uc.Chrome(advanced_elements=True)
+element = driver.find_element("css selector", "a.nav-link")
+print(element)
+```
+
+## Representation Comparison
+
+### Standard WebElement
+
+```python
+driver = uc.Chrome(advanced_elements=False)
+element = driver.find_element("css selector", "a#login-button")
+print(element)
+```
+
+**Output:**
+```
+<selenium.webdriver.remote.webelement.WebElement (session="85ff0f671512fa535630e71ee951b1f2", element="6357cb55-92c3-4c0f-9416-b174f9c1b8c4")>
+```
+
+This default representation shows internal IDs but nothing about the actual element.
+
+### Advanced WebElement (UCWebElement)
+
+```python
+driver = uc.Chrome(advanced_elements=True)
+element = driver.find_element("css selector", "a#login-button")
+print(element)
+```
+
+**Output:**
+```
+WebElement <a class="nav-link btn-primary" href="/login" id="login-button">
+```
+
+This shows the tag name and all attributes, making it immediately recognizable.
+
+## UCWebElement Class
+
+When `advanced_elements=True`, Undetected uses the `UCWebElement` class instead of the standard `WebElement`:
+
+```python
+# From __init__.py:436-439
+if advanced_elements:
+    self._web_element_cls = UCWebElement
+else:
+    self._web_element_cls = WebElement
+```
+
+## Features
+
+### 1. Readable Representation
+
+The `UCWebElement.__repr__()` method generates HTML-like output:
+
+```python
+def __repr__(self):
+    strattrs = " ".join([f'{k}="{v}"' for k, v in self.attrs.items()])
+    if strattrs:
+        strattrs = " " + strattrs
+    return f"{self.__class__.__name__} <{self.tag_name}{strattrs}>"
+```
+
+### 2. Lazy Attribute Loading
+
+Attributes are fetched once and cached:
+
+```python
+@property
+def attrs(self):
+    if not self._attrs:
+        self._attrs = self._parent.execute_script(
+            """
+            var items = {};
+            for (index = 0; index < arguments[0].attributes.length; ++index)
+            {
+             items[arguments[0].attributes[index].name] = arguments[0].attributes[index].value
+            };
+            return items;
+            """,
+            self,
+        )
+    return self._attrs
+```
+
+The `attrs` property returns a dictionary of all element attributes:
+
+```python
+element = driver.find_element("css selector", "input[type='email']")
+print(element.attrs)
+# {'type': 'email', 'name': 'email', 'class': 'form-control', 'id': 'email-input'}
+```
+
+### 3. All Standard WebElement Methods
+
+`UCWebElement` inherits all standard Selenium methods:
+
+```python
+element.click()
+element.send_keys("text")
+element.get_attribute("href")
+element.is_displayed()
+element.screenshot("element.png")
+```
+
+## Interactive Development Example
+
+### In Python REPL
+
+```python
+>>> import undetected as uc
+>>> driver = uc.Chrome(advanced_elements=True)
+>>> driver.get("https://github.com/login")
+>>> elements = driver.find_elements("css selector", "input")
+>>> elements
+[WebElement <input autocapitalize="off" autocomplete="username" 
+  autofocus="autofocus" class="form-control input-block" 
+  id="login_field" name="login" type="text">,
+ WebElement <input autocomplete="current-password" 
+  class="form-control form-control input-block" 
+  id="password" name="password" type="password">]
+```
+
+Each element is immediately identifiable without calling additional methods.
+
+### In Jupyter Notebook
+
+```python
+import undetected as uc
+
+driver = uc.Chrome(advanced_elements=True)
+driver.get("https://example.com")
+
+# Find all links
+links = driver.find_elements("tag name", "a")
+
+# Display in cell - each element shows its attributes
+links[:5]
+```
+
+**Output:**
+```python
+[WebElement <a class="nav-link" href="/about" id="about-link">,
+ WebElement <a class="footer-link" href="/contact">,
+ WebElement <a href="https://github.com" rel="noopener" target="_blank">,
+ WebElement <a aria-label="Home" class="logo" href="/">,
+ WebElement <a class="btn btn-primary" href="/signup" id="signup-btn">]
+```
+
+## Performance Considerations
+
+<Note>
+When retrieving large numbers of elements, advanced_elements adds a small performance overhead due to attribute fetching.
+</Note>
+
+### Example with Many Elements
+
+```python
+import undetected as uc
+import time
+
+driver = uc.Chrome(advanced_elements=True)
+driver.get("https://example.com")
+
+# Find all elements
+start = time.time()
+elements = driver.find_elements("tag name", "*")
+print(f"Found {len(elements)} elements in {time.time() - start:.2f}s")
+
+# Print them (this triggers attribute fetching)
+start = time.time()
+for elem in elements[:100]:
+    print(elem)  # Fetches attributes for each element
+print(f"Printed 100 elements in {time.time() - start:.2f}s")
+```
+
+<Warning>
+Only enable `advanced_elements=True` during development and debugging. For production scripts that don't need readable output, use the default `advanced_elements=False` for better performance.
+</Warning>
+
+## Use Cases
+
+### 1. Debugging Element Selectors
+
+```python
+import undetected as uc
+
+driver = uc.Chrome(advanced_elements=True)
+driver.get("https://example.com")
+
+# Find elements and immediately see what you got
+buttons = driver.find_elements("css selector", "button")
+for btn in buttons:
+    print(btn)  # See all button attributes at a glance
+```
+
+### 2. Exploratory Testing
+
+```python
+import undetected as uc
+
+driver = uc.Chrome(advanced_elements=True)
+driver.get("https://example.com/form")
+
+# Explore form fields
+fields = driver.find_elements("tag name", "input")
+for field in fields:
+    print(f"Field: {field}")
+    print(f"  Name: {field.get_attribute('name')}")
+    print(f"  Type: {field.attrs.get('type', 'text')}")
+    print()
+```
+
+### 3. Visual Element Verification
+
+```python
+import undetected as uc
+
+driver = uc.Chrome(advanced_elements=True)
+driver.get("https://example.com")
+
+# Verify the correct element is found
+login_button = driver.find_element("id", "login")
+print(f"Found: {login_button}")
+
+# Immediately see if it matches expectations:
+# WebElement <button class="btn btn-primary" id="login" type="submit">
+```
+
+## Additional WebElement Methods
+
+Both `WebElement` and `UCWebElement` include custom methods:
+
+### click_safe()
+
+Clicks an element and reconnects the driver to avoid detection:
+
+```python
+element = driver.find_element("id", "submit-btn")
+element.click_safe()  # Clicks and reconnects
+```
+
+Implementation:
+```python
+def click_safe(self):
+    super().click()
+    self._parent.reconnect(0.1)
+```
+
+### children()
+
+Returns direct child elements:
+
+```python
+element = driver.find_element("id", "nav-menu")
+
+# Get all direct children
+all_children = element.children()
+
+# Get only <li> children
+list_items = element.children(tag="li")
+
+# Get all descendants recursively
+all_descendants = element.children(recursive=True)
+```
+
+Implementation:
+```python
+def children(
+    self, tag=None, recursive=False
+) -> List[selenium.webdriver.remote.webelement.WebElement]:
+    """Returns direct child elements of current element
+    
+    :param tag: str, if supplied, returns <tag> nodes only
+    :param recursive: bool, if True, returns all descendants
+    """
+    script = "return [... arguments[0].children]"
+    if tag:
+        script += ".filter( node => node.tagName === '%s')" % tag.upper()
+    if recursive:
+        return list(_recursive_children(self, tag))
+    return list(self._parent.execute_script(script, self))
+```
+
+## Complete Example: Form Inspector
+
+```python
+import undetected as uc
+
+def inspect_form(driver, form_selector):
+    """Inspect all fields in a form"""
+    form = driver.find_element("css selector", form_selector)
+    print(f"Form: {form}\n")
+    
+    # Get all input fields
+    inputs = form.children(tag="input")
+    selects = form.children(tag="select")
+    textareas = form.children(tag="textarea")
+    
+    print("Input fields:")
+    for inp in inputs:
+        print(f"  {inp}")
+    
+    print("\nSelect fields:")
+    for sel in selects:
+        print(f"  {sel}")
+        # Get options
+        for opt in sel.children(tag="option"):
+            print(f"    {opt}")
+    
+    print("\nTextarea fields:")
+    for textarea in textareas:
+        print(f"  {textarea}")
+
+# Usage
+driver = uc.Chrome(advanced_elements=True)
+driver.get("https://example.com/form")
+inspect_form(driver, "form#contact-form")
+driver.quit()
+```
+
+## When to Use
+
+<CardGroup cols={2}>
+  <Card title="Development" icon="code">
+    Enable during development for better visibility into elements
+  </Card>
+  
+  <Card title="Debugging" icon="bug">
+    Use when troubleshooting element selectors or interactions
+  </Card>
+  
+  <Card title="Interactive Sessions" icon="terminal">
+    Essential for REPL and Jupyter notebook workflows
+  </Card>
+  
+  <Card title="Documentation" icon="book">
+    Useful for generating examples and tutorials
+  </Card>
+</CardGroup>
+
+## When NOT to Use
+
+<CardGroup cols={2}>
+  <Card title="Production Scripts" icon="server">
+    Disable for production - the attribute fetching adds overhead
+  </Card>
+  
+  <Card title="Performance Critical" icon="gauge-high">
+    Skip when processing thousands of elements
+  </Card>
+  
+  <Card title="Background Jobs" icon="clock">
+    Unnecessary for automated jobs without human interaction
+  </Card>
+  
+  <Card title="CI/CD Pipelines" icon="code-branch">
+    Not needed in automated testing environments
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [Chrome Class](/api/chrome) - Main driver parameters
+- [Basic Usage](/guides/basic-usage) - Working with elements
+- [Troubleshooting](/guides/troubleshooting) - Debugging and troubleshooting techniques

@@ -1,0 +1,293 @@
+---
+title: Patcher
+description: Understand how the Patcher class downloads and patches ChromeDriver to make it undetectable
+---
+
+The `Patcher` class is responsible for downloading, patching, and managing ChromeDriver binaries to make them undetectable by anti-bot systems.
+
+## How Patching Works
+
+Websites detect automated browsers by looking for specific signatures in ChromeDriver. The Patcher class:
+
+1. **Downloads** the correct ChromeDriver version matching your Chrome browser
+2. **Scans** the binary for detection code blocks (specifically `window.cdc_*` properties)
+3. **Replaces** detection code with harmless console.log statements
+4. **Verifies** the patch was successful
+
+### The Detection Vector
+
+ChromeDriver injects code into the browser that creates properties like:
+- `window.cdc_adoQpoasnfa76pfcZLmcfl_Array`
+- `window.cdc_adoQpoasnfa76pfcZLmcfl_Promise`
+- `window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol`
+
+Anti-bot systems detect these properties. The Patcher finds this code:
+```javascript
+{window.cdc_...;}
+```
+
+And replaces it with:
+```javascript
+{console.log("undetected chromedriver 1337!")}
+```
+
+## Automatic Usage
+
+In most cases, you don't need to interact with the Patcher directly:
+
+```python
+import undetected as uc
+
+# Patcher is automatically used
+driver = uc.Chrome()
+```
+
+The Chrome class automatically:
+1. Creates a Patcher instance
+2. Downloads and patches ChromeDriver if needed
+3. Verifies the patch
+4. Cleans up temporary files on exit
+
+## Manual Patching
+
+For multiprocessing scenarios, you must patch ChromeDriver before spawning processes:
+
+```python
+from undetected.patcher import Patcher
+import multiprocessing as mp
+import undetected as uc
+
+def worker(idx):
+    driver = uc.Chrome(user_multi_procs=True)
+    driver.get("https://example.com")
+    driver.quit()
+
+if __name__ == "__main__":
+    # Patch once before multiprocessing
+    Patcher.patch()
+    
+    processes = [mp.Process(target=worker, args=(i,)) for i in range(4)]
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
+```
+
+See [Multiprocessing](/core/multiprocessing) for more details.
+
+## Constructor Parameters
+
+### version_main
+
+**Type:** `int`  
+**Required:** Yes
+
+The major version of Chrome (e.g., 120, 121, 122). Used to download the matching ChromeDriver version.
+
+```python
+patcher = Patcher(version_main=120)
+```
+
+### driver_executable_path
+
+**Type:** `str` | `None`  
+**Default:** `None` (automatic)
+
+Path where the patched ChromeDriver should be saved. If `None`, creates a unique path in the data directory.
+
+```python
+patcher = Patcher(
+    version_main=120,
+    driver_executable_path="/path/to/chromedriver"
+)
+```
+
+### user_multi_procs
+
+**Type:** `bool`  
+**Default:** `False`
+
+When `True`, prevents automatic patching in the constructor. Required for multiprocessing to avoid conflicts.
+
+```python
+patcher = Patcher(
+    version_main=120,
+    user_multi_procs=True
+)
+```
+
+## Methods
+
+### patch() (Static)
+
+Downloads, patches, and saves a ChromeDriver binary. This is the main method for manual patching.
+
+```python
+from undetected.patcher import Patcher
+
+# Patch using system Chrome
+Patcher.patch()
+
+# Patch for specific Chrome installation
+Patcher.patch(browser_executable_path="/usr/bin/google-chrome")
+
+# Patch to specific location
+Patcher.patch(driver_executable_path="/path/to/chromedriver")
+```
+
+**Parameters:**
+- `browser_executable_path` (optional): Path to Chrome browser
+- `driver_executable_path` (optional): Where to save patched driver
+
+### verify()
+
+Verifies that a patched ChromeDriver binary exists and is valid.
+
+```python
+patcher = Patcher(version_main=120, user_multi_procs=True)
+if patcher.verify():
+    print(f"Found patched driver at: {patcher.driver_executable_path}")
+else:
+    print("No valid patched driver found")
+```
+
+### is_binary_patched()
+
+Checks if a specific binary has been patched by looking for the marker string.
+
+```python
+patcher = Patcher(version_main=120)
+if patcher.is_binary_patched("/path/to/chromedriver"):
+    print("Binary is patched")
+```
+
+### cleanup_unused_files()
+
+Removes old ChromeDriver binaries from the data directory.
+
+```python
+from undetected.patcher import Patcher
+
+Patcher.cleanup_unused_files()
+```
+
+## Data Directory
+
+Patched ChromeDriver binaries are stored in a platform-specific directory:
+
+- **Windows:** `~/AppData/Roaming/undetected`
+- **Linux:** `~/.local/share/undetected`
+- **macOS:** `~/Library/Application Support/undetected`
+- **AWS Lambda:** `/tmp/undetected`
+
+Each binary gets a unique random prefix to avoid conflicts in multiprocessing scenarios.
+
+## Chrome Version Detection
+
+The Patcher automatically detects Chrome versions:
+
+### Old ChromeDriver (≤114)
+
+Downloads from: `https://chromedriver.storage.googleapis.com`
+
+```python
+# For Chrome 114 and below
+patcher = Patcher(version_main=114)
+patcher.fetch_release_number()
+# Downloads from googleapis.com
+```
+
+### New ChromeDriver (≥115)
+
+Downloads from: `https://googlechromelabs.github.io/chrome-for-testing`
+
+```python
+# For Chrome 115 and above
+patcher = Patcher(version_main=120)
+patcher.fetch_release_number()
+# Downloads from chrome-for-testing API
+```
+
+## Platform Support
+
+The Patcher automatically detects your platform and downloads the correct binary:
+
+- **Windows:** `chromedriver.exe` (win32)
+- **Linux:** `chromedriver` (linux64)
+- **macOS:** `chromedriver` (mac-x64 for newer versions, mac64 for older)
+
+## Multiprocessing Considerations
+
+The Patcher uses a `Lock` to prevent race conditions when multiple processes try to patch the same binary:
+
+```python
+from multiprocessing import Lock
+
+class Patcher:
+    lock = Lock()  # Shared across all instances
+    
+    def verify(self):
+        with self.lock:
+            # Thread-safe verification
+            ...
+```
+
+This ensures that even in multiprocessing scenarios, only one process modifies the binary at a time.
+
+## Lifecycle Management
+
+The Patcher automatically cleans up temporary binaries when the driver quits:
+
+```python
+def __del__(self):
+    if not self._using_custom_exe and not self.user_multi_procs:
+        # Attempts to delete temporary binary
+        os.unlink(self.driver_executable_path)
+```
+
+<Note>
+Temporary binaries are NOT deleted when `user_multi_procs=True` or when using a custom driver path.
+</Note>
+
+## Advanced: Direct Usage
+
+```python
+from undetected.patcher import Patcher
+from undetected.utils.info import get_browser_info
+
+# Get Chrome version
+browser_info = get_browser_info()
+version = browser_info["browser_main_version"]
+
+# Create patcher
+patcher = Patcher(version_main=version)
+
+# Download and patch
+patcher.download_and_patch()
+
+# Verify
+if patcher.is_binary_patched():
+    print(f"Patched driver ready at: {patcher.driver_executable_path}")
+```
+
+## Error Handling
+
+The Patcher will raise exceptions in several scenarios:
+
+```python
+try:
+    patcher = Patcher(version_main=120, user_multi_procs=True)
+    patcher.verify()
+except Exception as e:
+    print("No undetected chromedriver binary found.")
+    print("Call Patcher.patch() outside of multiprocessing.")
+```
+
+<Warning>
+When using `user_multi_procs=True`, you must call `Patcher.patch()` before starting any processes, or `verify()` will raise an exception.
+</Warning>
+
+## Related
+
+- [Chrome Driver](/core/chrome-driver) - Learn about the Chrome class
+- [Multiprocessing](/core/multiprocessing) - Using Patcher with multiple processes

@@ -1,0 +1,393 @@
+---
+title: Chrome
+description: Main Chrome driver class for controlling Chrome/Chromium browsers with detection avoidance
+---
+
+## Overview
+
+The `Chrome` class is the main driver class that controls ChromeDriver and allows you to drive the browser with built-in detection avoidance. It extends Selenium's `WebDriver` class and automatically handles ChromeDriver download, patching, and configuration.
+
+```python
+import undetected as uc
+
+driver = uc.Chrome()
+driver.get('https://example.com')
+```
+
+## Constructor
+
+### Chrome()
+
+Creates a new instance of the Chrome driver with automatic detection avoidance.
+
+```python
+Chrome(
+    options=None,
+    user_data_dir=None,
+    driver_executable_path=None,
+    browser_executable_path=None,
+    port=0,
+    enable_cdp_events=False,
+    desired_capabilities=None,
+    advanced_elements=False,
+    keep_alive=True,
+    log_level=0,
+    headless=False,
+    suppress_welcome=True,
+    use_subprocess=True,
+    debug=False,
+    no_sandbox=True,
+    user_multi_procs=False,
+    **kw
+)
+```
+
+#### Parameters
+
+<ParamField path="options" type="ChromeOptions" default="None">
+  ChromeOptions instance to customize browser behavior. When `None`, automatic useful defaults are applied. Using custom options may lower undetectability.
+</ParamField>
+
+<ParamField path="user_data_dir" type="str" default="None">
+  Path to a Chrome profile directory. If specified, uses that profile and disables automatic removal at exit. If `None`, creates a temporary profile.
+</ParamField>
+
+<ParamField path="driver_executable_path" type="str" default="None">
+  Path to the ChromeDriver executable. When `None`, automatically downloads and patches a new binary.
+</ParamField>
+
+<ParamField path="browser_executable_path" type="str" default="None">
+  Path to the Chrome/Chromium browser executable. If not specified, uses the system's default Chrome installation.
+</ParamField>
+
+<ParamField path="port" type="int" default="0">
+  Port used by the ChromeDriver executable (NOT the debugger port). Value of `0` automatically picks an available port. Leave at default unless you know what you're doing.
+</ParamField>
+
+<ParamField path="enable_cdp_events" type="bool" default="False">
+  Enables Chrome DevTools Protocol event handling. When enabled, you can subscribe to CDP events using `add_cdp_listener()`.
+</ParamField>
+
+<ParamField path="desired_capabilities" type="dict" default="None">
+  Dictionary with non-browser specific capabilities like "proxy" or "loggingPrefs". Auto-generated from options when `None`.
+</ParamField>
+
+<ParamField path="advanced_elements" type="bool" default="False">
+  Makes WebElement repr more readable, showing HTML-like representation instead of session/element IDs. Useful for interactive environments.
+  
+  Example:
+  - Default: `<selenium.webdriver.remote.webelement.WebElement (session="...", element="...")>`
+  - Advanced: `<WebElement(<a class="nav-link" href="#" id="menu">)>`
+</ParamField>
+
+<ParamField path="keep_alive" type="bool" default="True">
+  Whether to configure ChromeRemoteConnection to use HTTP keep-alive.
+</ParamField>
+
+<ParamField path="log_level" type="int" default="0">
+  Chrome log level. Default adapts to Python's global log level.
+</ParamField>
+
+<ParamField path="headless" type="bool" default="False">
+  Run browser in headless mode. Can also be specified in the options instance. **Warning:** This lowers undetectability and is not fully supported.
+</ParamField>
+
+<ParamField path="suppress_welcome" type="bool" default="True">
+  Suppresses the "set as default browser" welcome alert on Unix-like systems. Set to `False` only if you want to handle the alert manually.
+</ParamField>
+
+<ParamField path="use_subprocess" type="bool" default="True">
+  When `False`, Chrome gets its own process (not a subprocess of ChromeDriver). This fixes multithreading issues and ensures proper shutdown. Set to `True` only for simple single-script usage.
+  
+  **Note:** Setting to `True` comes with NO support when being detected.
+</ParamField>
+
+<ParamField path="debug" type="bool" default="False">
+  Enable debug mode which logs all method calls with their arguments.
+</ParamField>
+
+<ParamField path="no_sandbox" type="bool" default="True">
+  Uses the `--no-sandbox` Chrome option and suppresses the "unsecure option" status bar. Required when running as root.
+</ParamField>
+
+<ParamField path="user_multi_procs" type="bool" default="False">
+  Set to `True` when using multithreading/multiprocessing. Prevents race conditions when multiple processes try to patch the same binary.
+  
+  **Important:** When using this option, you MUST call `Patcher.patch()` before creating Chrome instances:
+  
+  ```python
+  from undetected import Patcher
+  
+  # Call once before multiprocessing
+  Patcher.patch()
+  
+  # Now safe to create Chrome instances in multiple processes
+  ```
+</ParamField>
+
+#### Example Usage
+
+```python
+import undetected as uc
+
+# Basic usage with defaults
+driver = uc.Chrome()
+driver.get('https://example.com')
+
+# With custom profile
+driver = uc.Chrome(user_data_dir='/path/to/profile')
+
+# With headless mode
+driver = uc.Chrome(headless=True)
+
+# With CDP events enabled
+driver = uc.Chrome(enable_cdp_events=True)
+driver.add_cdp_listener('Network.responseReceived', my_callback)
+
+# With custom options
+options = uc.ChromeOptions()
+options.add_argument('--start-maximized')
+driver = uc.Chrome(options=options)
+```
+
+## Methods
+
+### get()
+
+Navigates to a URL.
+
+```python
+driver.get(url: str)
+```
+
+<ParamField path="url" type="str" required>
+  The URL to navigate to.
+</ParamField>
+
+```python
+driver.get('https://example.com')
+```
+
+---
+
+### add_cdp_listener()
+
+Subscribes to Chrome DevTools Protocol events. Only works when `enable_cdp_events=True`.
+
+```python
+driver.add_cdp_listener(event_name: str, callback: callable) -> dict | bool
+```
+
+<ParamField path="event_name" type="str" required>
+  The CDP event name (e.g., "Network.responseReceived", "Network.requestWillBeSent").
+</ParamField>
+
+<ParamField path="callback" type="callable" required>
+  Function that accepts exactly one parameter (the event message dict).
+</ParamField>
+
+**Returns:** Dictionary of handlers if successful, `False` if reactor is not enabled.
+
+```python
+def handle_response(message):
+    print(f"Response received: {message}")
+
+driver = uc.Chrome(enable_cdp_events=True)
+driver.add_cdp_listener('Network.responseReceived', handle_response)
+driver.get('https://example.com')
+```
+
+---
+
+### clear_cdp_listeners()
+
+Removes all CDP event listeners.
+
+```python
+driver.clear_cdp_listeners()
+```
+
+```python
+driver.clear_cdp_listeners()
+```
+
+---
+
+### window_new()
+
+Opens a new browser window.
+
+```python
+driver.window_new()
+```
+
+```python
+driver.window_new()
+driver.switch_to.window(driver.window_handles[-1])
+```
+
+---
+
+### tab_new()
+
+Opens a URL in a new tab using CDP.
+
+```python
+driver.tab_new(url: str)
+```
+
+<ParamField path="url" type="str" required>
+  The URL to open in the new tab.
+</ParamField>
+
+```python
+driver.tab_new('https://example.com')
+```
+
+---
+
+### reconnect()
+
+Reconnects to Chrome by stopping and restarting the ChromeDriver service. Useful for heavy detection avoidance.
+
+```python
+driver.reconnect(timeout: float = 0.1)
+```
+
+<ParamField path="timeout" type="float" default="0.1">
+  Time to wait between stopping and starting the service (in seconds).
+</ParamField>
+
+```python
+driver.reconnect(timeout=0.5)
+```
+
+---
+
+### start_session()
+
+Starts a new WebDriver session. Unlike the standard Selenium method, capabilities are automatically recreated from options.
+
+```python
+driver.start_session(capabilities=None, browser_profile=None)
+```
+
+<ParamField path="capabilities" type="dict" default="None">
+  Browser capabilities. Auto-generated from options if not provided.
+</ParamField>
+
+<ParamField path="browser_profile" type="Any" default="None">
+  Browser profile (for compatibility, not typically used).
+</ParamField>
+
+```python
+driver.start_session()
+```
+
+---
+
+### find_elements_recursive()
+
+Finds elements across all frames (including iframes). Returns a generator that yields elements as it searches.
+
+```python
+driver.find_elements_recursive(by: str, value: str) -> Generator[WebElement]
+```
+
+<ParamField path="by" type="str" required>
+  The locator strategy (e.g., By.ID, By.CSS_SELECTOR).
+</ParamField>
+
+<ParamField path="value" type="str" required>
+  The locator value.
+</ParamField>
+
+**Returns:** Generator yielding WebElement objects.
+
+```python
+from selenium.webdriver.common.by import By
+
+# Find all buttons across all frames
+for button in driver.find_elements_recursive(By.TAG_NAME, 'button'):
+    print(button.text)
+```
+
+---
+
+### quit()
+
+Closes the browser and cleans up resources including temporary profile.
+
+```python
+driver.quit()
+```
+
+```python
+try:
+    driver.get('https://example.com')
+    # Do work...
+finally:
+    driver.quit()
+```
+
+## Attributes
+
+<ParamField path="session_id" type="str">
+  The current WebDriver session ID.
+</ParamField>
+
+<ParamField path="debug" type="bool">
+  Whether debug mode is enabled.
+</ParamField>
+
+<ParamField path="reactor" type="Reactor">
+  The CDP event reactor instance (only available when `enable_cdp_events=True`).
+</ParamField>
+
+<ParamField path="patcher" type="Patcher">
+  The Patcher instance used to download and patch ChromeDriver.
+</ParamField>
+
+<ParamField path="options" type="ChromeOptions">
+  The ChromeOptions instance used to configure the browser.
+</ParamField>
+
+<ParamField path="user_data_dir" type="str">
+  Path to the user data directory (Chrome profile).
+</ParamField>
+
+<ParamField path="keep_user_data_dir" type="bool">
+  Whether the user data directory should be preserved after quit.
+</ParamField>
+
+<ParamField path="browser_pid" type="int">
+  The process ID of the Chrome browser.
+</ParamField>
+
+## Context Manager Support
+
+The Chrome class supports Python's context manager protocol:
+
+```python
+with uc.Chrome() as driver:
+    driver.get('https://example.com')
+    # Automatically reconnects on exit
+```
+
+## Important Notes
+
+<Warning>
+  Chrome has everything included to work out of the box. It does not *need* customizations. Any customizations MAY trigger bot mitigation systems.
+</Warning>
+
+<Note>
+  The ChromeDriver binary is automatically downloaded and patched. You don't need to manage it manually unless using `user_multi_procs=True`.
+</Note>
+
+<Info>
+  For best undetectability, avoid:
+  - Custom extensions
+  - Non-default startup options  
+  - Headless mode
+  - Running as subprocess (`use_subprocess=True`)
+</Info>

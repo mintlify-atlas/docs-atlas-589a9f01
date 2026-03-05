@@ -1,0 +1,439 @@
+---
+title: Patcher
+description: Handles ChromeDriver download, patching, and version management
+---
+
+## Overview
+
+The `Patcher` class manages ChromeDriver binary downloads, version matching, and applies patches to avoid detection. It automatically downloads the correct ChromeDriver version for your Chrome browser and patches it to remove detection vectors.
+
+```python
+from undetected import Patcher
+
+# Automatic usage (handled by Chrome class)
+driver = uc.Chrome()  # Patcher used internally
+
+# Manual usage for multiprocessing
+Patcher.patch()
+```
+
+## Constructor
+
+### Patcher()
+
+Creates a new Patcher instance.
+
+```python
+Patcher(
+    version_main: int,
+    driver_executable_path: str = None,
+    user_multi_procs: bool = False,
+    for_patch: bool = False
+)
+```
+
+<ParamField path="version_main" type="int" required>
+  The browser's main/major version number (e.g., 120, 121).
+</ParamField>
+
+<ParamField path="driver_executable_path" type="str" default="None">
+  Full file path to the ChromeDriver executable. When `None`, automatically determines the path.
+</ParamField>
+
+<ParamField path="user_multi_procs" type="bool" default="False">
+  Set to `True` when using multithreading/multiprocessing to prevent race conditions.
+</ParamField>
+
+<ParamField path="for_patch" type="bool" default="False">
+  Internal flag indicating the class is only being used to call the `patch()` method.
+</ParamField>
+
+```python
+from undetected import Patcher
+
+patcher = Patcher(
+    version_main=120,
+    driver_executable_path='/custom/path/chromedriver'
+)
+```
+
+## Class Methods
+
+### patch()
+
+Static method to download and patch ChromeDriver. Must be called before using Chrome in multiprocessing contexts.
+
+```python
+@staticmethod
+Patcher.patch(
+    browser_executable_path: str = None,
+    driver_executable_path: str = None
+)
+```
+
+<ParamField path="browser_executable_path" type="str" default="None">
+  Path to the Chrome browser executable. Used to detect the browser version.
+</ParamField>
+
+<ParamField path="driver_executable_path" type="str" default="None">
+  Path where the patched ChromeDriver should be saved.
+</ParamField>
+
+```python
+from undetected import Patcher
+import multiprocessing
+
+# Call once before multiprocessing
+Patcher.patch()
+
+def worker():
+    import undetected as uc
+    driver = uc.Chrome(user_multi_procs=True)
+    driver.get('https://example.com')
+    driver.quit()
+
+if __name__ == '__main__':
+    processes = []
+    for _ in range(4):
+        p = multiprocessing.Process(target=worker)
+        p.start()
+        processes.append(p)
+    
+    for p in processes:
+        p.join()
+```
+
+---
+
+### cleanup_unused_files()
+
+Removes old ChromeDriver binaries from the data directory.
+
+```python
+@classmethod
+Patcher.cleanup_unused_files()
+```
+
+```python
+from undetected import Patcher
+
+# Clean up old ChromeDriver files
+Patcher.cleanup_unused_files()
+```
+
+---
+
+### kill_all_instances()
+
+Kills all running instances of a ChromeDriver executable.
+
+```python
+@staticmethod
+Patcher.kill_all_instances(path: str)
+```
+
+<ParamField path="path" type="str" required>
+  Path to the ChromeDriver executable.
+</ParamField>
+
+```python
+from undetected import Patcher
+
+Patcher.kill_all_instances('/path/to/chromedriver')
+```
+
+## Instance Methods
+
+### verify()
+
+Verifies that a patched ChromeDriver binary exists and is valid.
+
+```python
+patcher.verify() -> bool
+```
+
+**Returns:** `True` if a valid patched binary is found, `False` otherwise.
+
+```python
+patcher = Patcher(version_main=120)
+if patcher.verify():
+    print(f"Valid binary found at: {patcher.driver_executable_path}")
+else:
+    print("No valid binary found")
+```
+
+---
+
+### download_and_patch()
+
+Downloads the appropriate ChromeDriver version and patches it.
+
+```python
+patcher.download_and_patch() -> bool
+```
+
+**Returns:** `True` if the binary was successfully patched.
+
+```python
+patcher = Patcher(version_main=120)
+patcher.download_and_patch()
+print(f"Patched driver at: {patcher.driver_executable_path}")
+```
+
+---
+
+### fetch_release_number()
+
+Fetches the latest full version number for the specified major version.
+
+```python
+patcher.fetch_release_number() -> Version
+```
+
+**Returns:** `Version` object with the full version number.
+
+```python
+from undetected import Patcher
+
+patcher = Patcher(version_main=120)
+version = patcher.fetch_release_number()
+print(f"Full version: {version}")  # e.g., 120.0.6099.109
+```
+
+---
+
+### fetch_package()
+
+Downloads the ChromeDriver package from Google's servers.
+
+```python
+patcher.fetch_package() -> str
+```
+
+**Returns:** Path to the downloaded ZIP file.
+
+```python
+patcher = Patcher(version_main=120)
+patcher.version_full = patcher.fetch_release_number()
+zip_path = patcher.fetch_package()
+print(f"Downloaded to: {zip_path}")
+```
+
+---
+
+### unzip_package()
+
+Extracts ChromeDriver from the downloaded package.
+
+```python
+patcher.unzip_package(fp: str) -> str
+```
+
+<ParamField path="fp" type="str" required>
+  Path to the ZIP file to extract.
+</ParamField>
+
+**Returns:** Path to the extracted ChromeDriver executable.
+
+```python
+zip_path = patcher.fetch_package()
+exe_path = patcher.unzip_package(zip_path)
+print(f"Extracted to: {exe_path}")
+```
+
+---
+
+### patch_exe()
+
+Patches the ChromeDriver binary to remove detection vectors.
+
+```python
+patcher.patch_exe()
+```
+
+```python
+patcher = Patcher(version_main=120)
+patcher.download_and_patch()  # Calls patch_exe internally
+```
+
+---
+
+### is_binary_patched()
+
+Checks if a ChromeDriver binary is already patched.
+
+```python
+patcher.is_binary_patched(driver_executable_path: str = None) -> bool
+```
+
+<ParamField path="driver_executable_path" type="str" default="None">
+  Path to check. Uses instance's `driver_executable_path` if not specified.
+</ParamField>
+
+**Returns:** `True` if the binary is patched, `False` otherwise.
+
+```python
+if patcher.is_binary_patched('/path/to/chromedriver'):
+    print("Binary is patched")
+else:
+    print("Binary needs patching")
+```
+
+---
+
+### driver_binary_in_use()
+
+Checks if a ChromeDriver binary is currently running.
+
+```python
+patcher.driver_binary_in_use(path: str = None) -> bool
+```
+
+<ParamField path="path" type="str" default="None">
+  Path to the binary to check. Uses instance's path if not specified.
+</ParamField>
+
+**Returns:** `True` if the binary is in use, `False` otherwise.
+
+```python
+if patcher.driver_binary_in_use():
+    print("ChromeDriver is currently running")
+```
+
+---
+
+### parse_exe_version()
+
+Extracts the version number from a ChromeDriver binary.
+
+```python
+patcher.parse_exe_version() -> Version
+```
+
+**Returns:** `Version` object parsed from the binary.
+
+```python
+patcher = Patcher(version_main=120)
+version = patcher.parse_exe_version()
+print(f"Binary version: {version}")
+```
+
+## Attributes
+
+<ParamField path="data_path" type="str">
+  Platform-specific directory where ChromeDriver binaries are stored:
+  - Windows: `~/appdata/roaming/undetected`
+  - Linux: `~/.local/share/undetected`
+  - macOS: `~/Library/Application Support/undetected`
+  - Lambda: `/tmp/undetected`
+</ParamField>
+
+<ParamField path="driver_executable_path" type="str">
+  Full path to the ChromeDriver executable.
+</ParamField>
+
+<ParamField path="version_main" type="int">
+  Browser major version number.
+</ParamField>
+
+<ParamField path="version_full" type="Version">
+  Full ChromeDriver version including minor, build, and patch numbers.
+</ParamField>
+
+<ParamField path="is_old_chromedriver" type="bool">
+  `True` if the version is 114 or older (uses legacy download URLs).
+</ParamField>
+
+<ParamField path="url_repo" type="str">
+  Base URL for downloading ChromeDriver:
+  - Chrome ≤114: `https://chromedriver.storage.googleapis.com`
+  - Chrome ≥115: `https://googlechromelabs.github.io/chrome-for-testing`
+</ParamField>
+
+<ParamField path="platform_name" type="str">
+  Platform identifier for downloads: `win32`, `linux64`, `mac-x64`, or `mac64`.
+</ParamField>
+
+<ParamField path="exe_name" type="str">
+  ChromeDriver executable name: `chromedriver.exe` (Windows) or `chromedriver` (Unix).
+</ParamField>
+
+## How Patching Works
+
+The patcher performs the following steps:
+
+1. **Version Detection**: Detects the Chrome browser version installed on your system
+2. **Download**: Downloads the matching ChromeDriver version from Google's CDN
+3. **Extract**: Unzips the ChromeDriver package
+4. **Patch**: Replaces detection code blocks with benign code:
+   - Finds: `{window.cdc...;}`
+   - Replaces with: `{console.log("undetected chromedriver 1337!")}`
+5. **Verify**: Confirms the binary is properly patched
+
+```python
+# The patching process
+patcher = Patcher(version_main=120)
+release = patcher.fetch_release_number()  # Get full version
+zip_path = patcher.fetch_package()         # Download ZIP
+patcher.unzip_package(zip_path)            # Extract
+patcher.patch_exe()                        # Apply patches
+patcher.is_binary_patched()                # Verify
+```
+
+## Multiprocessing Support
+
+When using multiprocessing or multithreading, you must call `Patcher.patch()` once before creating Chrome instances:
+
+```python
+from undetected import Patcher, Chrome
+from multiprocessing import Process
+
+# IMPORTANT: Call before spawning processes
+Patcher.patch()
+
+def run_browser(url):
+    driver = Chrome(user_multi_procs=True)
+    driver.get(url)
+    print(driver.title)
+    driver.quit()
+
+if __name__ == '__main__':
+    urls = ['https://example.com', 'https://example.org']
+    processes = [Process(target=run_browser, args=(url,)) for url in urls]
+    
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
+```
+
+## Version Compatibility
+
+The Patcher handles two different ChromeDriver distribution systems:
+
+### Chrome 114 and Earlier
+- URL: `https://chromedriver.storage.googleapis.com`
+- Format: `https://chromedriver.storage.googleapis.com/{version}/chromedriver_{platform}.zip`
+
+### Chrome 115 and Later  
+- URL: `https://googlechromelabs.github.io/chrome-for-testing`
+- Format: Uses JSON manifest with download URLs
+- ZIP structure includes platform-specific subdirectories
+
+## Important Notes
+
+<Warning>
+  When using `user_multi_procs=True`, you MUST call `Patcher.patch()` before creating any Chrome instances. Failure to do so will result in race conditions and errors.
+</Warning>
+
+<Info>
+  The Patcher automatically cleans up old ChromeDriver binaries when a new version is downloaded. Only the most recent binary is kept.
+</Info>
+
+<Note>
+  ChromeDriver binaries are stored in platform-specific directories and automatically managed. You typically don't need to specify custom paths unless you have specific requirements.
+</Note>
+
+<Info>
+  The patcher uses file locking to prevent race conditions when multiple processes try to patch simultaneously. This is handled automatically.
+</Info>

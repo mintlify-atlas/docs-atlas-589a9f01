@@ -1,0 +1,275 @@
+---
+title: Basic Usage
+description: Learn the fundamental patterns for using Undetected to create undetectable Chrome browser instances
+---
+
+## Getting Started
+
+Undetected provides a simple API that mirrors Selenium's WebDriver interface while automatically bypassing bot detection systems.
+
+### Simple Example
+
+The most basic usage requires just three lines of code:
+
+```python
+import undetected as uc
+
+driver = uc.Chrome()
+driver.get("https://example.com")
+driver.quit()
+```
+
+This creates a Chrome instance with all anti-detection features automatically enabled.
+
+## Common Usage Patterns
+
+<Steps>
+  <Step title="Import the library">
+    ```python
+    import undetected as uc
+    ```
+  </Step>
+  
+  <Step title="Create a Chrome instance">
+    ```python
+    driver = uc.Chrome()
+    ```
+    The driver automatically downloads and patches ChromeDriver if needed.
+  </Step>
+  
+  <Step title="Navigate and interact">
+    ```python
+    driver.get("https://example.com")
+    title = driver.title
+    print(title)
+    ```
+  </Step>
+  
+  <Step title="Clean up">
+    ```python
+    driver.quit()
+    ```
+    Always call `quit()` to properly close the browser and clean up resources.
+  </Step>
+</Steps>
+
+## Using with Context Manager
+
+For automatic cleanup, use the context manager pattern:
+
+```python
+import undetected as uc
+
+with uc.Chrome() as driver:
+    driver.get("https://example.com")
+    print(driver.title)
+# Browser automatically closes when exiting the context
+```
+
+<Warning>
+The context manager will reconnect the session on exit. If you want to fully quit the browser, call `driver.quit()` explicitly.
+</Warning>
+
+## Headless Mode
+
+Run Chrome without a visible window:
+
+```python
+import undetected as uc
+
+driver = uc.Chrome(headless=True)
+driver.get("https://example.com")
+driver.save_screenshot("screenshot.png")
+driver.quit()
+```
+
+<Warning>
+Headless mode lowers undetectability and is not fully supported. Use only when absolutely necessary.
+</Warning>
+
+## Working with User Profiles
+
+Use a persistent user profile to maintain cookies and settings:
+
+```python
+import undetected as uc
+
+driver = uc.Chrome(user_data_dir="/path/to/profile")
+driver.get("https://example.com")
+driver.quit()
+```
+
+When you specify a `user_data_dir`:
+- The profile persists between sessions
+- Cookies and login state are preserved
+- The profile is NOT automatically deleted on exit
+
+## Finding Elements
+
+Undetected supports all standard Selenium element location methods:
+
+```python
+import undetected as uc
+from selenium.webdriver.common.by import By
+
+driver = uc.Chrome()
+driver.get("https://example.com")
+
+# Find single element
+element = driver.find_element(By.ID, "my-id")
+element.click()
+
+# Find multiple elements
+elements = driver.find_elements(By.CLASS_NAME, "item")
+for elem in elements:
+    print(elem.text)
+
+driver.quit()
+```
+
+## Advanced Element Representation
+
+Enable `advanced_elements` for better debugging:
+
+```python
+import undetected as uc
+
+driver = uc.Chrome(advanced_elements=True)
+driver.get("https://example.com")
+
+element = driver.find_element(By.ID, "link")
+print(element)
+# Output: <WebElement(<a class="link" href="#" id="link">)>
+```
+
+This makes elements easier to identify during interactive development.
+
+<Warning>
+When retrieving large numbers of elements (e.g., `find_elements_by_tag("*")`), advanced representation may be slower.
+</Warning>
+
+## Executing JavaScript
+
+Run custom JavaScript in the browser context:
+
+```python
+import undetected as uc
+
+driver = uc.Chrome()
+driver.get("https://example.com")
+
+# Execute script
+title = driver.execute_script("return document.title")
+print(title)
+
+# Modify page
+driver.execute_script("document.body.style.backgroundColor = 'red'")
+
+driver.quit()
+```
+
+## Taking Screenshots
+
+Capture the current page:
+
+```python
+import undetected as uc
+
+driver = uc.Chrome()
+driver.get("https://example.com")
+
+# Save screenshot to file
+driver.save_screenshot("page.png")
+
+# Get screenshot as bytes
+screenshot_bytes = driver.get_screenshot_as_png()
+
+driver.quit()
+```
+
+## Waiting for Elements
+
+Use explicit waits for dynamic content:
+
+```python
+import undetected as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+driver = uc.Chrome()
+driver.get("https://example.com")
+
+# Wait up to 10 seconds for element to appear
+element = WebDriverWait(driver, 10).until(
+    EC.presence_of_element_located((By.ID, "dynamic-content"))
+)
+
+driver.quit()
+```
+
+## Searching Across Frames
+
+Find elements in all iframes:
+
+```python
+import undetected as uc
+from selenium.webdriver.common.by import By
+
+driver = uc.Chrome()
+driver.get("https://example.com")
+
+# Search all frames for elements
+for element in driver.find_elements_recursive(By.CLASS_NAME, "item"):
+    print(element.text)
+    # Element is usable immediately (frame context is already switched)
+
+driver.quit()
+```
+
+This generator function automatically switches between frames and yields elements in the correct context.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always call quit()">
+    Failing to call `quit()` can leave browser processes running and temp profiles consuming disk space.
+    
+    ```python
+    # Good
+    driver = uc.Chrome()
+    try:
+        driver.get("https://example.com")
+    finally:
+        driver.quit()
+    ```
+  </Accordion>
+  
+  <Accordion title="Avoid customizations">
+    The library works best with default settings. Custom options, extensions, and startup arguments may trigger bot detection.
+    
+    From the source code (undetected/__init__.py:58-63):
+    > Chrome has everything included to work out of the box. It does not `need` customizations. Any customizations MAY lead to trigger bot mitigation systems.
+  </Accordion>
+  
+  <Accordion title="Use appropriate delays">
+    Add natural delays between actions to mimic human behavior:
+    
+    ```python
+    import time
+    import undetected as uc
+    
+    driver = uc.Chrome()
+    driver.get("https://example.com")
+    time.sleep(2)  # Natural pause
+    driver.find_element(By.ID, "button").click()
+    driver.quit()
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- Learn about [Custom Options](/guides/custom-options) for specific use cases
+- Set up [Multiprocessing](/guides/multiprocessing-setup) for parallel browsers
+- Review [Troubleshooting](/guides/troubleshooting) for common issues

@@ -1,0 +1,496 @@
+---
+title: CDP
+description: Chrome DevTools Protocol client for direct browser control
+---
+
+## Overview
+
+The `CDP` class provides a direct interface to Chrome DevTools Protocol, allowing low-level control over browser tabs, sessions, and debugging. It communicates with Chrome via HTTP and WebSocket connections.
+
+```python
+from undetected import CDP, ChromeOptions
+
+options = uc.ChromeOptions()
+options.debugger_address = "127.0.0.1:9222"
+
+cdp = CDP(options)
+tabs = cdp.tab_list()
+print(f"Open tabs: {len(tabs)}")
+```
+
+## Constructor
+
+### CDP()
+
+Creates a new CDP client instance.
+
+```python
+CDP(options: ChromeOptions)
+```
+
+<ParamField path="options" type="ChromeOptions" required>
+  ChromeOptions instance containing the debugger address (host:port).
+</ParamField>
+
+```python
+import undetected as uc
+
+options = uc.ChromeOptions()
+options.debugger_address = "127.0.0.1:9222"
+
+cdp = uc.CDP(options)
+```
+
+## Methods
+
+### tab_list()
+
+Retrieves a list of all open tabs/pages.
+
+```python
+cdp.tab_list() -> list[PageElement]
+```
+
+**Returns:** List of `PageElement` objects, each representing an open tab.
+
+```python
+cdp = CDP(options)
+tabs = cdp.tab_list()
+
+for tab in tabs:
+    print(f"Tab: {tab.title}")
+    print(f"URL: {tab.url}")
+    print(f"ID: {tab.id}")
+```
+
+---
+
+### tab_new()
+
+Opens a new tab with the specified URL.
+
+```python
+cdp.tab_new(url: str)
+```
+
+<ParamField path="url" type="str" required>
+  The URL to open in the new tab.
+</ParamField>
+
+```python
+cdp = CDP(options)
+cdp.tab_new('https://example.com')
+```
+
+---
+
+### tab_activate()
+
+Activates (focuses) a specific tab.
+
+```python
+cdp.tab_activate(id: str = None)
+```
+
+<ParamField path="id" type="str" default="None">
+  The tab ID to activate. If `None`, activates the first tab in the list.
+</ParamField>
+
+```python
+cdp = CDP(options)
+tabs = cdp.tab_list()
+
+# Activate specific tab
+cdp.tab_activate(tabs[1].id)
+
+# Activate first tab
+cdp.tab_activate()
+```
+
+---
+
+### tab_close_last_opened()
+
+Closes the most recently opened tab.
+
+```python
+cdp.tab_close_last_opened()
+```
+
+```python
+cdp = CDP(options)
+cdp.tab_new('https://example.com')
+cdp.tab_new('https://example.org')
+cdp.tab_close_last_opened()  # Closes example.org tab
+```
+
+---
+
+### send()
+
+Sends a CDP command via WebSocket and waits for the response.
+
+```python
+async def send(method: str, params: dict)
+```
+
+<ParamField path="method" type="str" required>
+  The CDP method name (e.g., "Page.navigate", "Runtime.evaluate").
+</ParamField>
+
+<ParamField path="params" type="dict" required>
+  Dictionary of parameters for the CDP method.
+</ParamField>
+
+```python
+import asyncio
+from undetected import CDP, ChromeOptions
+
+async def navigate():
+    options = uc.ChromeOptions()
+    options.debugger_address = "127.0.0.1:9222"
+    
+    cdp = CDP(options)
+    await cdp.send('Page.navigate', {'url': 'https://example.com'})
+    print(f"Response: {cdp.last_json}")
+
+asyncio.run(navigate())
+```
+
+---
+
+### get()
+
+Sends an HTTP GET request to a CDP endpoint.
+
+```python
+cdp.get(uri: str) -> dict
+```
+
+<ParamField path="uri" type="str" required>
+  The endpoint URI (e.g., "/json", "/json/list").
+</ParamField>
+
+**Returns:** JSON response as a dictionary.
+
+```python
+cdp = CDP(options)
+info = cdp.get('/json/version')
+print(f"Browser: {info.get('Browser')}")
+print(f"Protocol Version: {info.get('Protocol-Version')}")
+```
+
+---
+
+### post()
+
+Sends an HTTP POST request to a CDP endpoint.
+
+```python
+cdp.post(uri: str, data: dict = None) -> dict | Response
+```
+
+<ParamField path="uri" type="str" required>
+  The endpoint URI.
+</ParamField>
+
+<ParamField path="data" type="dict" default="None">
+  JSON data to send in the POST request body.
+</ParamField>
+
+**Returns:** JSON response as dictionary, or Response object if JSON parsing fails.
+
+```python
+cdp = CDP(options)
+response = cdp.post('/json/close/tab-id-here')
+```
+
+## Attributes
+
+<ParamField path="server_addr" type="str">
+  HTTP address of the Chrome DevTools server (e.g., "http://127.0.0.1:9222").
+</ParamField>
+
+<ParamField path="sessionId" type="str">
+  The active session/tab ID.
+</ParamField>
+
+<ParamField path="wsurl" type="str">
+  WebSocket URL for the active session (e.g., "ws://127.0.0.1:9222/devtools/page/...").
+</ParamField>
+
+<ParamField path="last_json" type="dict">
+  The most recent JSON response from a CDP request (property).
+</ParamField>
+
+<ParamField path="endpoints" type="CDPObject">
+  Predefined CDP endpoint paths:
+  - `json`: "/json"
+  - `protocol`: "/json/protocol"
+  - `list`: "/json/list"  
+  - `new`: "/json/new?{url}"
+  - `activate`: "/json/activate/{id}"
+  - `close`: "/json/close/{id}"
+</ParamField>
+
+## Helper Classes
+
+### CDPObject
+
+A dictionary subclass that allows attribute-style access to keys.
+
+```python
+obj = CDPObject({'name': 'value', 'nested': {'key': 'data'}})
+print(obj.name)           # 'value'
+print(obj.nested.key)     # 'data'
+print(obj['name'])        # 'value' (dict-style also works)
+```
+
+### PageElement
+
+Represents a browser tab/page with CDP information.
+
+```python
+tabs = cdp.tab_list()
+for tab in tabs:
+    print(tab.id)                      # Tab ID
+    print(tab.url)                     # Current URL
+    print(tab.title)                   # Page title
+    print(tab.type)                    # Usually 'page'
+    print(tab.webSocketDebuggerUrl)    # WebSocket URL for this tab
+```
+
+## CDP Endpoints
+
+The CDP class provides access to standard Chrome DevTools HTTP endpoints:
+
+### /json
+
+Lists all pages/tabs:
+
+```python
+cdp = CDP(options)
+pages = cdp.get(cdp.endpoints.json)
+for page in pages:
+    print(f"{page['title']}: {page['url']}")
+```
+
+### /json/version
+
+Returns browser version information:
+
+```python
+version_info = cdp.get('/json/version')
+print(version_info)
+# {
+#   'Browser': 'Chrome/120.0.6099.109',
+#   'Protocol-Version': '1.3',
+#   'User-Agent': 'Mozilla/5.0...',
+#   'V8-Version': '12.0.267.8',
+#   'WebKit-Version': '537.36'
+# }
+```
+
+### /json/list
+
+Lists inspectable pages:
+
+```python
+pages = cdp.get(cdp.endpoints.list)
+```
+
+### /json/new
+
+Creates a new page:
+
+```python
+cdp.get(cdp.endpoints.new.format(url='https://example.com'))
+```
+
+### /json/activate/{id}
+
+Activates a specific tab:
+
+```python
+cdp.post(cdp.endpoints.activate.format(id='page-id'))
+```
+
+### /json/close/{id}
+
+Closes a specific tab:
+
+```python
+cdp.post(cdp.endpoints.close.format(id='page-id'))
+```
+
+## WebSocket Communication
+
+The `send()` method communicates via WebSocket for real-time CDP commands:
+
+```python
+import asyncio
+from undetected import CDP, ChromeOptions
+
+async def main():
+    options = uc.ChromeOptions()
+    options.debugger_address = "127.0.0.1:9222"
+    cdp = CDP(options)
+    
+    # Execute JavaScript
+    await cdp.send('Runtime.evaluate', {
+        'expression': 'document.title',
+        'returnByValue': True
+    })
+    result = cdp.last_json
+    print(f"Page title: {result['result']['result']['value']}")
+    
+    # Take screenshot
+    await cdp.send('Page.captureScreenshot', {
+        'format': 'png',
+        'quality': 80
+    })
+    screenshot_data = cdp.last_json['result']['data']
+    
+    # Navigate to URL
+    await cdp.send('Page.navigate', {
+        'url': 'https://example.com'
+    })
+
+asyncio.run(main())
+```
+
+## Complete Example
+
+Here's a complete example showing various CDP operations:
+
+```python
+import asyncio
+import undetected as uc
+from undetected import CDP
+
+async def main():
+    # Start Chrome with debugging port
+    driver = uc.Chrome()
+    
+    # Create CDP client
+    cdp = CDP(driver.options)
+    
+    # List all tabs
+    tabs = cdp.tab_list()
+    print(f"Open tabs: {len(tabs)}")
+    for tab in tabs:
+        print(f"  {tab.title}: {tab.url}")
+    
+    # Open new tab
+    cdp.tab_new('https://example.com')
+    
+    # Execute JavaScript via CDP
+    await cdp.send('Runtime.evaluate', {
+        'expression': 'navigator.userAgent'
+    })
+    print(f"User Agent: {cdp.last_json}")
+    
+    # Get page title
+    await cdp.send('Runtime.evaluate', {
+        'expression': 'document.title',
+        'returnByValue': True
+    })
+    title = cdp.last_json['result']['result']['value']
+    print(f"Page title: {title}")
+    
+    # Close last opened tab
+    cdp.tab_close_last_opened()
+    
+    driver.quit()
+
+if __name__ == '__main__':
+    asyncio.run(main())
+```
+
+## Integration with Chrome Class
+
+The Chrome class can use CDP for tab operations:
+
+```python
+import undetected as uc
+
+driver = uc.Chrome()
+
+# Open new tab via CDP
+driver.tab_new('https://example.com')
+
+# CDP is created internally
+from undetected.cdp import CDP
+cdp = CDP(driver.options)
+tabs = cdp.tab_list()
+print(f"Total tabs: {len(tabs)}")
+```
+
+## Common CDP Commands
+
+Here are some useful CDP commands you can send via `send()`:
+
+### Page Commands
+```python
+# Navigate
+await cdp.send('Page.navigate', {'url': 'https://example.com'})
+
+# Reload
+await cdp.send('Page.reload', {})
+
+# Screenshot
+await cdp.send('Page.captureScreenshot', {'format': 'png'})
+
+# Print to PDF
+await cdp.send('Page.printToPDF', {})
+```
+
+### Runtime Commands
+```python
+# Evaluate JavaScript
+await cdp.send('Runtime.evaluate', {
+    'expression': 'document.querySelector("h1").textContent'
+})
+
+# Call function
+await cdp.send('Runtime.callFunctionOn', {
+    'functionDeclaration': 'function() { return this.textContent; }',
+    'objectId': 'element-object-id'
+})
+```
+
+### Network Commands
+```python
+# Enable network tracking
+await cdp.send('Network.enable', {})
+
+# Set user agent
+await cdp.send('Network.setUserAgentOverride', {
+    'userAgent': 'Custom User Agent'
+})
+
+# Clear cache
+await cdp.send('Network.clearBrowserCache', {})
+```
+
+## Important Notes
+
+<Warning>
+  The CDP class requires an active Chrome instance with a debugger port open. Make sure the Chrome instance is running before creating a CDP client.
+</Warning>
+
+<Info>
+  The `send()` method is async and must be called with `await` inside an async function. Use `asyncio.run()` to execute async CDP operations.
+</Info>
+
+<Note>
+  Each CDP instance maintains a session with a specific tab. Use `tab_activate()` to switch between tabs, which updates the WebSocket URL.
+</Note>
+
+<Info>
+  The `last_json` property always contains the most recent response. Check this property after calling `send()`, `get()`, or `post()` to access response data.
+</Info>
+
+<Warning>
+  WebSocket connections are created and closed for each `send()` call. For high-frequency CDP usage, consider maintaining a persistent WebSocket connection manually.
+</Warning>

@@ -1,0 +1,301 @@
+---
+title: ChromeOptions
+description: Configuration class for customizing Chrome browser behavior
+---
+
+## Overview
+
+The `ChromeOptions` class is used to configure Chrome browser behavior. It extends Selenium's `ChromiumOptions` class and provides additional functionality for managing user profiles and preferences.
+
+```python
+import undetected as uc
+
+options = uc.ChromeOptions()
+options.add_argument('--start-maximized')
+options.add_experimental_option('prefs', {'download.default_directory': '/path/to/dir'})
+
+driver = uc.Chrome(options=options)
+```
+
+## Constructor
+
+### ChromeOptions()
+
+Creates a new ChromeOptions instance.
+
+```python
+ChromoOptions()
+```
+
+```python
+options = uc.ChromeOptions()
+```
+
+## Properties
+
+### user_data_dir
+
+Gets or sets the browser profile folder path.
+
+```python
+@property
+user_data_dir -> str
+
+@user_data_dir.setter
+user_data_dir(path: str)
+```
+
+<ParamField path="path" type="str">
+  The path to a Chrome profile folder. If the path doesn't exist, a new profile will be created at the given location.
+</ParamField>
+
+```python
+options = uc.ChromeOptions()
+options.user_data_dir = '/path/to/profile'
+
+# Or read the current value
+profile_path = options.user_data_dir
+```
+
+## Methods
+
+### handle_prefs()
+
+Processes Chrome preferences and writes them to the profile's Preferences file. This method merges experimental options preferences with existing profile preferences.
+
+```python
+options.handle_prefs(user_data_dir: str)
+```
+
+<ParamField path="user_data_dir" type="str" required>
+  Path to the user data directory where preferences should be written.
+</ParamField>
+
+**Internal Method:** This is typically called automatically by the Chrome driver during initialization.
+
+```python
+options = uc.ChromeOptions()
+options.add_experimental_option('prefs', {
+    'download.default_directory': '/downloads',
+    'profile.default_content_setting_values.notifications': 2
+})
+
+# Automatically called by Chrome driver
+# options.handle_prefs('/path/to/user_data_dir')
+```
+
+---
+
+### from_options()
+
+Creates a ChromeOptions instance from an existing options object.
+
+```python
+@classmethod
+ChromoOptions.from_options(options) -> ChromeOptions
+```
+
+<ParamField path="options" type="ChromeOptions" required>
+  An existing ChromeOptions instance to copy from.
+</ParamField>
+
+**Returns:** New ChromeOptions instance with copied attributes.
+
+```python
+existing_options = uc.ChromeOptions()
+existing_options.add_argument('--disable-blink-features=AutomationControlled')
+
+new_options = uc.ChromeOptions.from_options(existing_options)
+```
+
+## Inherited Methods
+
+Since `ChromeOptions` extends Selenium's `ChromiumOptions`, all standard Selenium options methods are available:
+
+### add_argument()
+
+Adds a command-line argument to Chrome.
+
+```python
+options.add_argument(argument: str)
+```
+
+```python
+options = uc.ChromeOptions()
+options.add_argument('--disable-blink-features=AutomationControlled')
+options.add_argument('--start-maximized')
+options.add_argument('--disable-extensions')
+```
+
+### add_extension()
+
+Adds a Chrome extension to the browser.
+
+```python
+options.add_extension(extension: str)
+```
+
+<Warning>
+  Adding extensions may lower undetectability and trigger bot detection.
+</Warning>
+
+```python
+options.add_extension('/path/to/extension.crx')
+```
+
+### add_experimental_option()
+
+Adds an experimental option to Chrome.
+
+```python
+options.add_experimental_option(name: str, value: Any)
+```
+
+```python
+options = uc.ChromeOptions()
+
+# Set download directory
+options.add_experimental_option('prefs', {
+    'download.default_directory': '/path/to/downloads'
+})
+
+# Exclude automation switches
+options.add_experimental_option('excludeSwitches', ['enable-automation'])
+
+# Use Chrome DevTools Protocol
+options.add_experimental_option('useAutomationExtension', False)
+```
+
+### set_capability()
+
+Sets a browser capability.
+
+```python
+options.set_capability(name: str, value: Any)
+```
+
+```python
+options.set_capability('pageLoadStrategy', 'normal')
+```
+
+## Common Usage Patterns
+
+### Setting Preferences
+
+Chrome preferences can be set using dotted key notation:
+
+```python
+options = uc.ChromeOptions()
+options.add_experimental_option('prefs', {
+    # Download settings
+    'download.default_directory': '/downloads',
+    'download.prompt_for_download': False,
+    
+    # Notification settings  
+    'profile.default_content_setting_values.notifications': 2,
+    
+    # Geolocation settings
+    'profile.default_content_setting_values.geolocation': 2,
+})
+```
+
+### Headless Mode
+
+```python
+options = uc.ChromeOptions()
+options.add_argument('--headless=new')
+
+driver = uc.Chrome(options=options)
+```
+
+<Warning>
+  Headless mode significantly lowers undetectability. Use `headless=True` parameter on Chrome class instead for better detection avoidance.
+</Warning>
+
+### Window Size and Position
+
+```python
+options = uc.ChromeOptions()
+options.add_argument('--window-size=1920,1080')
+options.add_argument('--window-position=0,0')
+```
+
+### Disable Features
+
+```python
+options = uc.ChromeOptions()
+options.add_argument('--disable-blink-features=AutomationControlled')
+options.add_experimental_option('excludeSwitches', ['enable-automation'])
+options.add_experimental_option('useAutomationExtension', False)
+```
+
+### Custom User Agent
+
+```python
+options = uc.ChromeOptions()
+options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+```
+
+### Proxy Configuration
+
+```python
+options = uc.ChromeOptions()
+options.add_argument('--proxy-server=http://proxy.example.com:8080')
+```
+
+## Preference File Format
+
+The `handle_prefs()` method processes dotted preference keys into nested JSON structure:
+
+```python
+# Input preferences
+prefs = {
+    'profile.default_content_setting_values.notifications': 2,
+    'download.default_directory': '/downloads'
+}
+
+# Converted to nested structure in Preferences file:
+{
+    "profile": {
+        "default_content_setting_values": {
+            "notifications": 2
+        }
+    },
+    "download": {
+        "default_directory": "/downloads"
+    }
+}
+```
+
+## Important Notes
+
+<Warning>
+  ChromeOptions objects cannot be reused. Each Chrome instance requires a new ChromeOptions object. Reusing options will raise a `RuntimeError`.
+</Warning>
+
+```python
+options = uc.ChromeOptions()
+driver1 = uc.Chrome(options=options)  # OK
+driver2 = uc.Chrome(options=options)  # RuntimeError!
+
+# Create new options for second driver
+options2 = uc.ChromeOptions()
+driver2 = uc.Chrome(options=options2)  # OK
+```
+
+<Info>
+  The `user_data_dir` property on ChromeOptions is deprecated. Use the `user_data_dir` parameter on the Chrome constructor instead:
+  
+  ```python
+  # Deprecated
+  options = uc.ChromeOptions()
+  options.user_data_dir = '/path/to/profile'
+  
+  # Recommended
+  driver = uc.Chrome(user_data_dir='/path/to/profile')
+  ```
+</Info>
+
+<Note>
+  Experimental options with the key "prefs" are automatically removed after being processed by `handle_prefs()` to avoid conflicts with Chrome's internal handling.
+</Note>

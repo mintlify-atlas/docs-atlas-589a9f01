@@ -1,0 +1,347 @@
+---
+title: 'Headless Mode'
+description: 'Configure headless browser mode with stealth features'
+---
+
+## Overview
+
+Headless mode allows Chrome to run without a visible window, useful for server environments, automated testing, and background scraping. Undetected includes built-in stealth configurations to make headless browsers harder to detect.
+
+<Warning>
+Headless mode lowers undetectability and is not fully supported. Some websites can detect headless browsers through various fingerprinting techniques. Use with caution for anti-bot protected sites.
+</Warning>
+
+## Enabling Headless Mode
+
+You can enable headless mode in two ways:
+
+### Method 1: Constructor Parameter
+
+```python
+import undetected as uc
+
+driver = uc.Chrome(headless=True)
+driver.get("https://example.com")
+```
+
+### Method 2: ChromeOptions
+
+```python
+import undetected as uc
+
+options = uc.ChromeOptions()
+options.headless = True
+
+driver = uc.Chrome(options=options)
+driver.get("https://example.com")
+```
+
+Both methods achieve the same result. The driver will automatically apply stealth configurations.
+
+## Chrome Version Detection
+
+Undetected automatically selects the correct headless flag based on Chrome version:
+
+```python
+# Chrome < 108
+if self.patcher.version_main and self.patcher.version_main < 108:
+    options.add_argument("--headless=chrome")
+
+# Chrome >= 108 (new headless mode)
+elif self.patcher.version_main and self.patcher.version_main >= 108:
+    options.add_argument("--headless=new")
+```
+
+Chrome 108+ introduced a new headless mode that's harder to detect. Undetected uses this automatically when available.
+
+## Stealth Features
+
+When headless mode is enabled, the `_configure_headless()` method applies several stealth patches:
+
+### 1. Navigator.webdriver Patch
+
+Removes the `navigator.webdriver` property that identifies automated browsers:
+
+```javascript
+Object.defineProperty(window, "navigator", {
+    value: new Proxy(navigator, {
+        has: (target, key) => (key === "webdriver" ? false : key in target),
+        get: (target, key) =>
+            key === "webdriver"
+                ? false
+                : typeof target[key] === "function"
+                ? target[key].bind(target)
+                : target[key],
+    }),
+});
+```
+
+This makes `navigator.webdriver` return `false` instead of `true`.
+
+### 2. User-Agent Sanitization
+
+Removes "Headless" from the user-agent string:
+
+```python
+self.execute_cdp_cmd(
+    "Network.setUserAgentOverride",
+    {
+        "userAgent": self.execute_script(
+            "return navigator.userAgent"
+        ).replace("Headless", "")
+    },
+)
+```
+
+**Before:**
+```
+Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/120.0.0.0 Safari/537.36
+```
+
+**After:**
+```
+Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+```
+
+### 3. Touch Points Configuration
+
+Sets realistic touch point values:
+
+```javascript
+Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 1});
+Object.defineProperty(navigator.connection, 'rtt', {get: () => 100});
+```
+
+### 4. Chrome Runtime Simulation
+
+Adds a realistic `window.chrome` object that's normally missing in headless:
+
+```javascript
+window.chrome = {
+    app: {
+        isInstalled: false,
+        InstallState: {
+            DISABLED: 'disabled',
+            INSTALLED: 'installed',
+            NOT_INSTALLED: 'not_installed'
+        },
+        RunningState: {
+            CANNOT_RUN: 'cannot_run',
+            READY_TO_RUN: 'ready_to_run',
+            RUNNING: 'running'
+        }
+    },
+    runtime: {
+        OnInstalledReason: {
+            CHROME_UPDATE: 'chrome_update',
+            INSTALL: 'install',
+            SHARED_MODULE_UPDATE: 'shared_module_update',
+            UPDATE: 'update'
+        },
+        PlatformOs: {
+            ANDROID: 'android',
+            CROS: 'cros',
+            LINUX: 'linux',
+            MAC: 'mac',
+            OPENBSD: 'openbsd',
+            WIN: 'win'
+        }
+        // ... more properties
+    }
+}
+```
+
+### 5. Notification Permissions
+
+Sets up realistic notification permission handling:
+
+```javascript
+if (!window.Notification) {
+    window.Notification = {
+        permission: 'denied'
+    }
+}
+
+const originalQuery = window.navigator.permissions.query
+window.navigator.permissions.__proto__.query = parameters =>
+    parameters.name === 'notifications'
+        ? Promise.resolve({ state: window.Notification.permission })
+        : originalQuery(parameters)
+```
+
+### 6. Function.toString Protection
+
+Patches `Function.prototype.toString` to hide evidence of modifications:
+
+```javascript
+const nativeToStringFunctionString = Error.toString().replace(/Error/g, 'toString')
+const oldToString = Function.prototype.toString
+
+function functionToString() {
+    if (this === window.navigator.permissions.query) {
+        return 'function query() { [native code] }'
+    }
+    if (this === functionToString) {
+        return nativeToStringFunctionString
+    }
+    return oldCall.call(oldToString, this)
+}
+
+Function.prototype.toString = functionToString
+```
+
+## Implementation Details
+
+The `_configure_headless()` method wraps the `get()` method to apply patches before loading pages:
+
+```python
+def _configure_headless(self):
+    orig_get = self.get
+    logger.info("setting properties for headless")
+    
+    def get_wrapped(*args, **kwargs):
+        if self.execute_script("return navigator.webdriver"):
+            logger.info("patch navigator.webdriver")
+            # Apply all CDP commands to inject scripts
+            # ...
+        return orig_get(*args, **kwargs)
+    
+    self.get = get_wrapped
+```
+
+Patches are only applied when `navigator.webdriver` is detected, ensuring they run once per session.
+
+## Complete Example
+
+```python
+import undetected as uc
+import time
+
+def test_headless_detection(driver):
+    """Test if headless mode is detected"""
+    driver.get("https://bot.sannysoft.com/")
+    time.sleep(3)
+    
+    # Check navigator.webdriver
+    webdriver = driver.execute_script("return navigator.webdriver")
+    print(f"navigator.webdriver: {webdriver}")  # Should be False
+    
+    # Check user agent
+    user_agent = driver.execute_script("return navigator.userAgent")
+    print(f"Contains 'Headless': {'Headless' in user_agent}")  # Should be False
+    
+    # Check chrome object
+    has_chrome = driver.execute_script("return !!window.chrome")
+    print(f"Has window.chrome: {has_chrome}")  # Should be True
+    
+    # Screenshot for manual inspection
+    driver.save_screenshot("headless_test.png")
+
+# Test headless mode
+driver = uc.Chrome(headless=True)
+test_headless_detection(driver)
+driver.quit()
+
+# Compare with non-headless
+driver = uc.Chrome(headless=False)
+test_headless_detection(driver)
+driver.quit()
+```
+
+## Known Limitations
+
+### Detection Vectors
+
+Despite stealth features, headless browsers can still be detected through:
+
+1. **Canvas fingerprinting** - Headless rendering engines produce slightly different outputs
+2. **WebGL fingerprinting** - GPU emulation differences
+3. **Missing plugins** - Headless browsers typically lack PDF viewer, Flash, etc.
+4. **Behavior patterns** - Perfect mouse movements, instant page loads
+5. **Screen dimensions** - Unusual or default viewport sizes
+
+### Workarounds
+
+```python
+import undetected as uc
+
+options = uc.ChromeOptions()
+options.headless = True
+
+# Set realistic screen size
+options.add_argument("--window-size=1920,1080")
+
+# Set user data directory for persistence
+driver = uc.Chrome(
+    options=options,
+    user_data_dir="/path/to/profile"
+)
+
+# Add random delays
+import random
+import time
+
+driver.get("https://example.com")
+time.sleep(random.uniform(1, 3))
+
+# Scroll naturally
+driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
+time.sleep(random.uniform(0.5, 1.5))
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use New Headless" icon="chrome">
+    Ensure Chrome 108+ for the improved `--headless=new` mode
+  </Card>
+  
+  <Card title="Persistent Profiles" icon="user">
+    Use `user_data_dir` to maintain cookies and session data
+  </Card>
+  
+  <Card title="Random Delays" icon="clock">
+    Add human-like delays between actions
+  </Card>
+  
+  <Card title="Test Detection" icon="shield">
+    Regularly test against bot detection services
+  </Card>
+</CardGroup>
+
+## Testing Sites
+
+Test your headless configuration on these detection sites:
+
+- **bot.sannysoft.com** - Comprehensive bot detection tests
+- **arh.antoinevastel.com/bots/areyouheadless** - Headless detection checks
+- **pixelscan.net** - Browser fingerprinting analysis
+- **browserleaks.com** - WebRTC, Canvas, and other leaks
+
+## Alternative: Xvfb
+
+For Linux servers, use Xvfb (X Virtual Framebuffer) to run headed mode without a display:
+
+```bash
+# Install Xvfb
+sudo apt-get install xvfb
+
+# Run with virtual display
+xvfb-run -a python your_script.py
+```
+
+```python
+import undetected as uc
+
+# No headless=True needed when using Xvfb
+driver = uc.Chrome()
+driver.get("https://example.com")
+```
+
+This runs a full Chrome instance with better undetectability than headless mode.
+
+## See Also
+
+- [Chrome Options](/api/chrome-options) - Configure browser options
+- [CDP Events](/advanced/cdp-events) - Monitor browser events
+- [Getting Started](/introduction) - Basic usage guide

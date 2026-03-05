@@ -1,0 +1,148 @@
+---
+title: DevTool Utilities
+description: Development utilities and helper classes for the Undetected library
+---
+
+## Overview
+
+The `devtool` module provides utility classes and decorators for development, testing, and internal library operations.
+
+## Structure
+
+A dict-like object structure that provides convenient dot-notation access to dictionary keys.
+
+### Usage
+
+`Structure` is a base class that you should subclass to create custom data structures with both dictionary and attribute-style access patterns.
+
+```python
+from undetected.devtool import Structure
+
+class MyData(Structure):
+    pass
+
+# Initialize with dictionary data
+data = MyData({'name': 'example', 'value': 42})
+
+# Access using dot notation
+print(data.name)  # 'example'
+print(data.value)  # 42
+
+# Also works as a dictionary
+print(data['name'])  # 'example'
+```
+
+### Features
+
+- **Nested structure support:** Automatically converts nested dictionaries to Structure instances
+- **Sequence handling:** Converts lists of dictionaries to lists of Structure instances
+- **Hashable:** Implements `__hash__()` and `__eq__()` for use in sets and as dict keys
+- **String normalization:** Provides `_normalize_strings()` method to strip whitespace from string values
+
+### Methods
+
+#### `__init__(*a, **kw)`
+
+Creates a new Structure instance from dictionary data.
+
+```python
+# From dictionary
+struct = MyStructure({'key': 'value'})
+
+# From keyword arguments
+struct = MyStructure(key='value', number=123)
+
+# Nested structures
+struct = MyStructure({
+    'user': {
+        'name': 'John',
+        'email': 'john@example.com'
+    }
+})
+print(struct.user.name)  # 'John'
+```
+
+#### `_normalize_strings()`
+
+Strips whitespace from all string values in the structure.
+
+```python
+data = MyStructure({'name': '  John  ', 'city': ' NYC '})
+data._normalize_strings()
+print(data.name)  # 'John'
+print(data.city)  # 'NYC'
+```
+
+---
+
+## timeout
+
+Decorator that adds timeout functionality to functions with optional timeout handling.
+
+### Usage
+
+<ParamField path="seconds" type="int" default="3">
+  Number of seconds before the function times out
+</ParamField>
+
+<ParamField path="on_timeout" type="Callable" optional>
+  Optional callback function to execute when timeout occurs. Receives the wrapped function as an argument. If not provided, raises TimeoutError.
+</ParamField>
+
+```python
+from undetected.devtool import timeout
+
+@timeout(seconds=5)
+def slow_operation():
+    # This will raise TimeoutError if it takes more than 5 seconds
+    time.sleep(10)
+
+# Custom timeout handler
+def handle_timeout(func):
+    print(f"Function {func.__name__} timed out!")
+
+@timeout(seconds=3, on_timeout=handle_timeout)
+def another_operation():
+    time.sleep(10)
+```
+
+### Implementation Details
+
+- Uses `threading.Timer` to implement timeout functionality
+- Properly cancels the timer if the function completes successfully
+- Preserves function metadata using `functools.wraps`
+- Re-raises exceptions that occur during function execution
+
+---
+
+## Internal Functions
+
+### `test()`
+
+Internal test function that demonstrates usage of the collector pattern for Chrome DevTools Protocol event collection. This function is used for library development and testing purposes.
+
+**Note:** This is an internal function and not part of the public API.
+
+### `collector()`
+
+Internal utility for collecting Chrome DevTools Protocol events in a background thread. This function is used internally by the library for monitoring browser events.
+
+**Note:** This is an internal function and not part of the public API.
+
+---
+
+## Use Cases
+
+### Structure Class
+
+The `Structure` class is useful for:
+- Creating configuration objects with dot-notation access
+- Handling API responses as structured objects
+- Building type-safe data containers without full class definitions
+
+### timeout Decorator
+
+The `timeout` decorator is useful for:
+- Adding timeout protection to potentially long-running operations
+- Implementing fallback behavior when operations exceed time limits
+- Testing and development scenarios where operations need time constraints

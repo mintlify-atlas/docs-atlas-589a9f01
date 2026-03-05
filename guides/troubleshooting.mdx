@@ -1,0 +1,611 @@
+---
+title: Troubleshooting
+description: Common issues and solutions when using Undetected library
+---
+
+## Common Errors
+
+<AccordionGroup>
+  <Accordion title="No undetected chromedriver binary were found">
+    **Error Message:**
+    ```
+    No undetected chromedriver binary were found.
+    Call `Patcher.patch()` outside of multiprocessing/threading implementation.
+    ```
+    
+    **Cause:** You're using multiprocessing without properly initializing the patcher.
+    
+    **Solution:**
+    
+    Call `Patcher.patch()` before spawning processes and use `user_multi_procs=True`:
+    
+    ```python
+    import undetected as uc
+    from undetected.patcher import Patcher
+    import multiprocessing as mp
+    
+    def worker():
+        driver = uc.Chrome(user_multi_procs=True)  # Important!
+        driver.get("https://example.com")
+        driver.quit()
+    
+    if __name__ == "__main__":
+        Patcher.patch()  # Call this FIRST
+        
+        processes = [mp.Process(target=worker) for _ in range(4)]
+        for p in processes:
+            p.start()
+        for p in processes:
+            p.join()
+    ```
+    
+    See [Multiprocessing Setup](/guides/multiprocessing-setup) for more details.
+  </Accordion>
+  
+  <Accordion title="you cannot reuse the ChromeOptions object">
+    **Error Message:**
+    ```
+    RuntimeError: you cannot reuse the ChromeOptions object
+    ```
+    
+    **Cause:** Attempting to use the same `ChromeOptions` instance for multiple drivers.
+    
+    **Solution:**
+    
+    Create a new options object for each driver:
+    
+    ```python
+    import undetected as uc
+    
+    # ❌ WRONG
+    options = uc.ChromeOptions()
+    driver1 = uc.Chrome(options=options)
+    driver2 = uc.Chrome(options=options)  # Error!
+    
+    # ✅ CORRECT
+    options1 = uc.ChromeOptions()
+    driver1 = uc.Chrome(options=options1)
+    
+    options2 = uc.ChromeOptions()
+    driver2 = uc.Chrome(options=options2)
+    ```
+  </Accordion>
+  
+  <Accordion title="PermissionError when accessing chromedriver">
+    **Error Message:**
+    ```
+    PermissionError: [Errno 13] Permission denied: '~/.local/share/undetected/chromedriver'
+    ```
+    
+    **Cause:** Multiple processes are trying to modify the same binary file, or the file is still in use.
+    
+    **Solutions:**
+    
+    1. **For multiprocessing:** Use `user_multi_procs=True`
+    ```python
+    driver = uc.Chrome(user_multi_procs=True)
+    ```
+    
+    2. **For single process:** Ensure previous driver is properly closed
+    ```python
+    driver1 = uc.Chrome()
+    driver1.quit()  # Ensure quit is called
+    
+    driver2 = uc.Chrome()  # Now safe to create new instance
+    ```
+    
+    3. **Manual cleanup:**
+    ```python
+    from undetected.patcher import Patcher
+    Patcher.cleanup_unused_files()
+    ```
+  </Accordion>
+  
+  <Accordion title="Chrome fails to start as root">
+    **Error Message:**
+    ```
+    Running as root without --no-sandbox is not supported
+    ```
+    
+    **Cause:** Chrome refuses to run as root without the `--no-sandbox` flag.
+    
+    **Solution:**
+    
+    The library adds this automatically by default. If you're still seeing this, ensure you haven't disabled it:
+    
+    ```python
+    import undetected as uc
+    
+    # This is the default behavior
+    driver = uc.Chrome(no_sandbox=True)
+    
+    # Or add it explicitly via options
+    options = uc.ChromeOptions()
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    driver = uc.Chrome(options=options)
+    ```
+    
+    **Better solution:** Don't run as root. Create a dedicated user:
+    ```bash
+    sudo useradd -m scraper
+    sudo -u scraper python your_script.py
+    ```
+  </Accordion>
+  
+  <Accordion title="SessionNotCreatedException: session not created">
+    **Error Message:**
+    ```
+    selenium.common.exceptions.SessionNotCreatedException: Message: session not created: 
+    This version of ChromeDriver only supports Chrome version X
+    ```
+    
+    **Cause:** ChromeDriver version doesn't match your Chrome browser version.
+    
+    **Solution:**
+    
+    Undetected automatically downloads the correct version. This error usually indicates:
+    
+    1. **Manual driver path specified incorrectly:**
+    ```python
+    # Let the library handle it automatically
+    driver = uc.Chrome()  # Don't specify driver_executable_path
+    ```
+    
+    2. **Unusual Chrome installation location:**
+    ```python
+    driver = uc.Chrome(
+        browser_executable_path="/path/to/chrome"
+    )
+    ```
+    
+    3. **Force re-download:**
+    ```python
+    from undetected.patcher import Patcher
+    Patcher.cleanup_unused_files()
+    # Then create driver normally
+    driver = uc.Chrome()
+    ```
+  </Accordion>
+  
+  <Accordion title="Browser detected as bot">
+    **Symptom:** Your browser is still being detected by Cloudflare, DataDome, or other anti-bot systems.
+    
+    **Possible Causes & Solutions:**
+    
+    1. **Too many customizations:**
+    ```python
+    # ❌ AVOID heavy customization
+    options = uc.ChromeOptions()
+    options.add_argument("--user-agent=...")  # Don't override UA
+    options.add_extension("extension.crx")    # Avoid extensions
+    
+    # ✅ BETTER - use defaults
+    driver = uc.Chrome()  # Minimal customization
+    ```
+    
+    2. **Headless mode:**
+    ```python
+    # Headless mode lowers undetectability
+    # Use only when necessary
+    driver = uc.Chrome(headless=False)  # Prefer visible mode
+    ```
+    
+    3. **Behavioral patterns:**
+    ```python
+    import time
+    import random
+    
+    driver = uc.Chrome()
+    driver.get("https://example.com")
+    
+    # Add human-like delays
+    time.sleep(random.uniform(1, 3))
+    
+    # Natural scrolling
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
+    time.sleep(random.uniform(0.5, 1.5))
+    ```
+    
+    4. **IP reputation:**
+    - Use residential proxies instead of datacenter IPs
+    - Rotate IP addresses
+    - Respect rate limits
+  </Accordion>
+  
+  <Accordion title="Temp profile not deleted">
+    **Symptom:** Temporary user data directories accumulate in `/tmp` or AppData.
+    
+    **Cause:** Driver not properly closed with `quit()`.
+    
+    **Solution:**
+    
+    Always call `quit()` using try/finally:
+    
+    ```python
+    import undetected as uc
+    
+    driver = uc.Chrome()
+    try:
+        driver.get("https://example.com")
+        # ... do work ...
+    finally:
+        driver.quit()  # Ensures cleanup
+    ```
+    
+    **Manual cleanup:**
+    ```bash
+    # Linux/macOS
+    rm -rf /tmp/tmp*
+    
+    # Windows PowerShell
+    Remove-Item -Path "$env:TEMP\tmp*" -Recurse -Force
+    ```
+  </Accordion>
+  
+  <Accordion title="Could not connect to Chrome">
+    **Error Message:**
+    ```
+    selenium.common.exceptions.WebDriverException: Message: chrome not reachable
+    ```
+    
+    **Causes & Solutions:**
+    
+    1. **Chrome crashed during startup:**
+    ```python
+    # Add more memory if running in containers
+    options = uc.ChromeOptions()
+    options.add_argument("--disable-dev-shm-usage")
+    driver = uc.Chrome(options=options)
+    ```
+    
+    2. **Port already in use:**
+    ```python
+    # Let the library choose a free port
+    driver = uc.Chrome(port=0)  # 0 = auto-select
+    ```
+    
+    3. **Firewall blocking:**
+    - Check that localhost/127.0.0.1 is not blocked
+    - Ensure Chrome can bind to random high ports
+  </Accordion>
+  
+  <Accordion title="TimeoutException during page load">
+    **Error Message:**
+    ```
+    selenium.common.exceptions.TimeoutException: Message: timeout
+    ```
+    
+    **Solutions:**
+    
+    1. **Increase page load timeout:**
+    ```python
+    import undetected as uc
+    
+    driver = uc.Chrome()
+    driver.set_page_load_timeout(30)  # 30 seconds
+    driver.get("https://slow-site.com")
+    ```
+    
+    2. **Use eager loading strategy:**
+    ```python
+    options = uc.ChromeOptions()
+    options.set_capability("pageLoadStrategy", "eager")
+    driver = uc.Chrome(options=options)
+    ```
+    
+    3. **Wait for specific elements instead:**
+    ```python
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.common.by import By
+    
+    driver = uc.Chrome()
+    driver.get("https://example.com")
+    
+    element = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.ID, "content"))
+    )
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Platform-Specific Issues
+
+### Linux
+
+<AccordionGroup>
+  <Accordion title="Missing shared libraries">
+    **Error:** `error while loading shared libraries: libnss3.so`
+    
+    **Solution:**
+    ```bash
+    # Debian/Ubuntu
+    sudo apt-get install -y \
+      libnss3 \
+      libgconf-2-4 \
+      libfontconfig1 \
+      libxss1 \
+      libappindicator1 \
+      libasound2
+    
+    # RHEL/CentOS
+    sudo yum install -y \
+      nss \
+      alsa-lib \
+      liberation-fonts
+    ```
+  </Accordion>
+  
+  <Accordion title="Display issues in headless environments">
+    **Error:** `Could not initialize GTK`
+    
+    **Solution:**
+    ```bash
+    # Install virtual display
+    sudo apt-get install -y xvfb
+    
+    # Use with Xvfb
+    Xvfb :99 -screen 0 1920x1080x24 &
+    export DISPLAY=:99
+    python your_script.py
+    ```
+    
+    Or use headless mode:
+    ```python
+    driver = uc.Chrome(headless=True)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Windows
+
+<AccordionGroup>
+  <Accordion title="Antivirus blocking ChromeDriver">
+    **Symptom:** ChromeDriver is deleted or quarantined immediately after download.
+    
+    **Solution:**
+    
+    Add exception for the undetected data directory:
+    - Default location: `%APPDATA%\Roaming\undetected`
+    - Add to antivirus exclusions
+  </Accordion>
+  
+  <Accordion title="Path too long error">
+    **Error:** `OSError: [WinError 206] The filename or extension is too long`
+    
+    **Solution:**
+    ```python
+    # Use shorter user_data_dir path
+    driver = uc.Chrome(user_data_dir="C:/temp/uc")
+    ```
+    
+    Or enable long paths in Windows:
+    ```powershell
+    # Run as Administrator
+    New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `
+      -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### macOS
+
+<AccordionGroup>
+  <Accordion title="macOS Gatekeeper blocking ChromeDriver">
+    **Error:** `"chromedriver" cannot be opened because the developer cannot be verified`
+    
+    **Solution:**
+    ```bash
+    # Find the ChromeDriver location
+    ls ~/Library/Application\ Support/undetected/
+    
+    # Remove quarantine attribute
+    xattr -d com.apple.quarantine ~/Library/Application\ Support/undetected/*chromedriver*
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Docker Issues
+
+<AccordionGroup>
+  <Accordion title="Running in Docker containers">
+    **Common issues:** Shared memory, display, Chrome installation
+    
+    **Solution:**
+    
+    Use this Dockerfile template:
+    ```dockerfile
+    FROM python:3.11-slim
+    
+    # Install Chrome dependencies
+    RUN apt-get update && apt-get install -y \
+        wget \
+        gnupg \
+        ca-certificates \
+        fonts-liberation \
+        libasound2 \
+        libatk-bridge2.0-0 \
+        libatk1.0-0 \
+        libatspi2.0-0 \
+        libcups2 \
+        libdbus-1-3 \
+        libdrm2 \
+        libgbm1 \
+        libgtk-3-0 \
+        libnspr4 \
+        libnss3 \
+        libwayland-client0 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libxkbcommon0 \
+        libxrandr2 \
+        xdg-utils \
+        --no-install-recommends \
+        && rm -rf /var/lib/apt/lists/*
+    
+    # Install Chrome
+    RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+        && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+        && apt-get update \
+        && apt-get install -y google-chrome-stable \
+        && rm -rf /var/lib/apt/lists/*
+    
+    # Install Python dependencies
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+    
+    COPY . .
+    
+    CMD ["python", "your_script.py"]
+    ```
+    
+    Python code:
+    ```python
+    import undetected as uc
+    
+    options = uc.ChromeOptions()
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    
+    driver = uc.Chrome(options=options, headless=True)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance Issues
+
+<AccordionGroup>
+  <Accordion title="Slow page loads">
+    **Solutions:**
+    
+    1. **Disable images:**
+    ```python
+    options = uc.ChromeOptions()
+    prefs = {"profile.managed_default_content_settings.images": 2}
+    options.set_experimental_option("prefs", prefs)
+    driver = uc.Chrome(options=options)
+    ```
+    
+    2. **Use eager loading:**
+    ```python
+    options.set_capability("pageLoadStrategy", "eager")
+    ```
+    
+    3. **Disable unnecessary features:**
+    ```python
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-plugins")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    ```
+  </Accordion>
+  
+  <Accordion title="High memory usage">
+    **Solutions:**
+    
+    1. **Limit concurrent instances:**
+    ```python
+    # Don't run too many browsers at once
+    MAX_CONCURRENT = 4  # Adjust based on your system
+    ```
+    
+    2. **Use headless mode:**
+    ```python
+    driver = uc.Chrome(headless=True)
+    ```
+    
+    3. **Clean up properly:**
+    ```python
+    driver.quit()  # Always call quit()
+    ```
+    
+    4. **Increase Docker memory limit:**
+    ```bash
+    docker run --memory="2g" your_image
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Debugging Tips
+
+### Enable Debug Logging
+
+```python
+import logging
+import undetected as uc
+
+# Enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+
+driver = uc.Chrome(debug=True)
+```
+
+### Save Screenshots on Error
+
+```python
+import undetected as uc
+
+driver = uc.Chrome()
+try:
+    driver.get("https://example.com")
+    # ... your code ...
+except Exception as e:
+    driver.save_screenshot("error.png")
+    print(f"Error: {e}")
+    raise
+finally:
+    driver.quit()
+```
+
+### Check Chrome Version
+
+```python
+import undetected as uc
+
+driver = uc.Chrome()
+driver.get("chrome://version")
+driver.save_screenshot("chrome_version.png")
+
+# Check ChromeDriver version
+print(driver.capabilities['chrome']['chromedriverVersion'])
+
+driver.quit()
+```
+
+### Test Bot Detection
+
+```python
+import undetected as uc
+
+driver = uc.Chrome()
+
+# Test sites
+test_urls = [
+    "https://bot.incolumitas.com",
+    "https://nowsecure.nl",
+    "https://arh.antoinevastel.com/bots/areyouheadless",
+]
+
+for url in test_urls:
+    driver.get(url)
+    driver.save_screenshot(f"test_{url.split('//')[-1].replace('/', '_')}.png")
+    input(f"Check {url} - Press Enter to continue...")
+
+driver.quit()
+```
+
+## Getting Help
+
+If you're still experiencing issues:
+
+1. **Check the GitHub issues:** [undetected-chromedriver issues](https://github.com/ultrafunkamsterdam/undetected-chromedriver/issues)
+2. **Provide details:** Chrome version, OS, Python version, full error traceback
+3. **Minimal reproducible example:** Simplify your code to the minimum that reproduces the issue
+
+## Next Steps
+
+- Review [Basic Usage](/guides/basic-usage) for correct patterns
+- Check [Multiprocessing Setup](/guides/multiprocessing-setup) for concurrent execution
+- Explore [Custom Options](/guides/custom-options) for configuration details

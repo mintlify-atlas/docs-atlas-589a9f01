@@ -1,0 +1,219 @@
+---
+title: Chrome Driver
+description: The main Chrome class that controls ChromeDriver and provides undetectable browser automation
+---
+
+The `Chrome` class is the core component of Undetected. It extends Selenium's WebDriver to provide an undetectable Chrome browser instance that automatically downloads, patches, and manages ChromeDriver.
+
+## Basic Usage
+
+```python
+import undetected as uc
+
+driver = uc.Chrome()
+driver.get("https://example.com")
+driver.quit()
+```
+
+## How It Works
+
+The Chrome class automatically:
+
+1. **Detects your Chrome version** - Finds your installed Chrome browser and determines its version
+2. **Downloads the matching ChromeDriver** - Fetches the correct ChromeDriver binary for your Chrome version
+3. **Patches the driver** - Removes detection vectors from the ChromeDriver binary
+4. **Configures optimal settings** - Sets up arguments and options to avoid detection
+5. **Manages the browser lifecycle** - Handles startup, cleanup, and temporary profiles
+
+## Key Parameters
+
+### options
+
+**Type:** `ChromeOptions` | `None`  
+**Default:** `None` (automatic useful defaults)
+
+Takes an instance of `ChromeOptions` to customize browser behavior. Anything other than the default (e.g., extensions or custom startup options) may lower undetectability.
+
+```python
+from undetected import Chrome, ChromeOptions
+
+options = ChromeOptions()
+options.add_argument("--disable-blink-features=AutomationControlled")
+driver = Chrome(options=options)
+```
+
+### user_data_dir
+
+**Type:** `str` | `None`  
+**Default:** `None` (creates temporary profile)
+
+Path to a Chrome profile directory. If specified, uses that profile and disables automatic cleanup on exit. If `None`, creates a temporary profile that is deleted when the driver quits.
+
+```python
+driver = Chrome(user_data_dir="/path/to/profile")
+```
+
+### driver_executable_path
+
+**Type:** `str` | `None`  
+**Default:** `None` (downloads and patches new binary)
+
+Path to the ChromeDriver executable. If not specified, the driver is automatically downloaded and patched.
+
+```python
+driver = Chrome(driver_executable_path="/path/to/chromedriver")
+```
+
+### browser_executable_path
+
+**Type:** `str` | `None`  
+**Default:** `None` (uses automatic detection)
+
+Path to the Chrome browser executable. If not specified, the library searches for Chrome in standard locations.
+
+```python
+driver = Chrome(browser_executable_path="/usr/bin/google-chrome")
+```
+
+### port
+
+**Type:** `int`  
+**Default:** `0` (automatic)
+
+Port used by the ChromeDriver executable (not the debugger port). The default value of `0` automatically picks an available port.
+
+### enable_cdp_events
+
+**Type:** `bool`  
+**Default:** `False`
+
+Enables Chrome DevTools Protocol (CDP) event handling. When enabled, you can subscribe to CDP events:
+
+```python
+driver = Chrome(enable_cdp_events=True)
+
+def handle_network_data(data):
+    print(f"Network data received: {data}")
+
+driver.add_cdp_listener("Network.dataReceived", handle_network_data)
+```
+
+### advanced_elements
+
+**Type:** `bool`  
+**Default:** `False`
+
+Makes WebElements display more readable representations, especially useful in interactive environments.
+
+**Standard representation:**
+```python
+<selenium.webdriver.remote.webelement.WebElement (session="85ff0f67...", element="6357cb55...")>
+```
+
+**Advanced representation:**
+```python
+<WebElement(<a class="mobile-show-inline-block" href="#" id="main-cat-switcher-mobile">)>
+```
+
+### headless
+
+**Type:** `bool`  
+**Default:** `False`
+
+Runs the browser in headless mode. **Warning:** This lowers undetectability and is not fully supported.
+
+```python
+driver = Chrome(headless=True)
+```
+
+### use_subprocess
+
+**Type:** `bool`  
+**Default:** `True`
+
+- `False` (recommended): Chrome runs in its own process, fixing issues with multithreading and cleanup
+- `True`: Chrome starts as a subprocess, useful for simple scripts that exit immediately
+
+<Warning>
+Setting `use_subprocess=True` comes with NO support when being detected.
+</Warning>
+
+### no_sandbox
+
+**Type:** `bool`  
+**Default:** `True`
+
+Uses the `--no-sandbox` option and suppresses the "unsecure option" status bar. Default is `True` because Chrome won't start as root without this flag.
+
+### user_multi_procs
+
+**Type:** `bool`  
+**Default:** `False`
+
+Set to `True` when using multithreading or multiprocessing. Prevents multiple processes from trying to modify a binary that's in use by another process.
+
+See [Multiprocessing](/core/multiprocessing) for details.
+
+## Special Methods
+
+### reconnect()
+
+Reconnects to the browser by stopping and restarting the ChromeDriver service. Useful for evading heavy detection methods.
+
+```python
+driver.reconnect(timeout=0.1)
+```
+
+### find_elements_recursive()
+
+Finds elements across all frames in the page. Returns a generator that yields elements while maintaining the correct frame context.
+
+```python
+for element in driver.find_elements_recursive(By.TAG_NAME, "input"):
+    print(element.get_attribute("name"))
+```
+
+### add_cdp_listener()
+
+Subscribes to Chrome DevTools Protocol events (requires `enable_cdp_events=True`).
+
+```python
+def callback(data):
+    print(data)
+
+driver.add_cdp_listener("Network.requestWillBeSent", callback)
+```
+
+### clear_cdp_listeners()
+
+Removes all registered CDP event listeners.
+
+```python
+driver.clear_cdp_listeners()
+```
+
+## Context Manager Support
+
+The Chrome class supports Python's context manager protocol:
+
+```python
+with uc.Chrome() as driver:
+    driver.get("https://example.com")
+    # driver automatically cleaned up on exit
+```
+
+## Important Notes
+
+<Note>
+Chrome has everything included to work out of the box. It does not need customizations. Any customizations MAY trigger bot mitigation systems.
+</Note>
+
+<Warning>
+The ChromeOptions object cannot be reused. Attempting to create multiple Chrome instances with the same options object will raise a `RuntimeError`.
+</Warning>
+
+## Related
+
+- [ChromeOptions](/core/options) - Customize browser configuration
+- [Patcher](/core/patcher) - Understand how ChromeDriver is patched
+- [Multiprocessing](/core/multiprocessing) - Use Undetected with multiple processes

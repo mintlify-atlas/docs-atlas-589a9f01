@@ -1,0 +1,211 @@
+---
+title: Chrome Options
+description: Configure Chrome browser behavior with the ChromeOptions class
+---
+
+The `ChromeOptions` class extends Selenium's ChromiumOptions to provide additional functionality for configuring Chrome browser behavior in Undetected.
+
+## Basic Usage
+
+```python
+import undetected as uc
+from undetected import ChromeOptions
+
+options = ChromeOptions()
+options.add_argument("--start-maximized")
+options.add_argument("--disable-notifications")
+
+driver = uc.Chrome(options=options)
+```
+
+<Warning>
+Custom options and arguments may trigger bot detection systems. Use with caution.
+</Warning>
+
+## Configuration Methods
+
+ChromeOptions inherits all standard Selenium ChromiumOptions methods:
+
+```python
+options = ChromeOptions()
+
+# Add command-line arguments
+options.add_argument("--window-size=1920,1080")
+options.add_argument("--disable-blink-features=AutomationControlled")
+
+# Set binary location
+options.binary_location = "/path/to/chrome"
+
+# Add extensions
+options.add_extension("/path/to/extension.crx")
+
+# Set experimental options
+options.add_experimental_option("excludeSwitches", ["enable-automation"])
+options.add_experimental_option("useAutomationExtension", False)
+
+# Set preferences
+options.add_experimental_option("prefs", {
+    "download.default_directory": "/path/to/downloads",
+    "download.prompt_for_download": False,
+})
+```
+
+## User Data Directory
+
+The `user_data_dir` property provides a convenient way to set a Chrome profile directory.
+
+```python
+options = ChromeOptions()
+options.user_data_dir = "/path/to/profile"
+
+driver = uc.Chrome(options=options)
+```
+
+When you set `user_data_dir`:
+- The path is automatically normalized and converted to an absolute path
+- If the directory doesn't exist, Chrome creates a new profile at that location
+- The profile persists after the driver quits (not automatically cleaned up)
+
+<Note>
+Using `ChromeOptions.user_data_dir` is deprecated. Use `Chrome(user_data_dir="/path")` instead.
+</Note>
+
+## Preferences Handling
+
+Undetected's ChromeOptions includes special handling for Chrome preferences through the `handle_prefs()` method.
+
+### Dotted Key Notation
+
+You can use dotted notation for nested preference keys:
+
+```python
+options = ChromeOptions()
+options.add_experimental_option("prefs", {
+    "profile.default_content_setting_values.notifications": 2,
+    "download.default_directory": "/downloads",
+    "download.prompt_for_download": False,
+})
+```
+
+Undetected automatically converts dotted keys into nested dictionaries:
+
+```python
+# "profile.default_content_setting_values.notifications": 2
+# becomes:
+{
+    "profile": {
+        "default_content_setting_values": {
+            "notifications": 2
+        }
+    }
+}
+```
+
+### Preference Merging
+
+If a `Preferences` file already exists in the profile directory, Undetected merges your preferences with the existing ones, with your values taking precedence.
+
+## Creating Options from Existing Options
+
+You can create a new ChromeOptions instance from an existing options object:
+
+```python
+existing_options = ChromeOptions()
+existing_options.add_argument("--start-maximized")
+
+# Create new options with same configuration
+new_options = ChromeOptions.from_options(existing_options)
+```
+
+## Common Configuration Examples
+
+### Disable Automation Indicators
+
+```python
+options = ChromeOptions()
+options.add_argument("--disable-blink-features=AutomationControlled")
+options.add_experimental_option("excludeSwitches", ["enable-automation"])
+options.add_experimental_option("useAutomationExtension", False)
+```
+
+### Custom Download Directory
+
+```python
+options = ChromeOptions()
+options.add_experimental_option("prefs", {
+    "download.default_directory": "/path/to/downloads",
+    "download.prompt_for_download": False,
+    "download.directory_upgrade": True,
+})
+```
+
+### Disable Notifications
+
+```python
+options = ChromeOptions()
+options.add_experimental_option("prefs", {
+    "profile.default_content_setting_values.notifications": 2
+})
+```
+
+### Custom User Agent
+
+```python
+options = ChromeOptions()
+options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)...")
+```
+
+### Proxy Configuration
+
+```python
+options = ChromeOptions()
+options.add_argument("--proxy-server=http://proxy.example.com:8080")
+```
+
+### Disable Images for Faster Loading
+
+```python
+options = ChromeOptions()
+options.add_experimental_option("prefs", {
+    "profile.managed_default_content_settings.images": 2
+})
+```
+
+## Important Notes
+
+<Warning>
+ChromeOptions objects cannot be reused. Creating multiple Chrome instances with the same options object will raise a `RuntimeError`:
+
+```python
+options = ChromeOptions()
+driver1 = uc.Chrome(options=options)  # OK
+driver2 = uc.Chrome(options=options)  # RuntimeError!
+```
+
+Create a new ChromeOptions instance for each Chrome driver.
+</Warning>
+
+<Note>
+The Chrome class automatically sets many options for optimal undetectability. Only add custom options if absolutely necessary, as they may interfere with stealth features.
+</Note>
+
+## Automatic Options
+
+Even when you don't provide options, Undetected automatically sets several arguments:
+
+- `--remote-debugging-host=127.0.0.1`
+- `--remote-debugging-port=<auto>`
+- `--window-size=1920,1080`
+- `--start-maximized`
+- `--no-sandbox`
+- `--no-default-browser-check`
+- `--no-first-run`
+- `--lang=<system-locale>`
+- `--log-level=0`
+
+These are carefully chosen to balance functionality and undetectability.
+
+## Related
+
+- [Chrome Driver](/core/chrome-driver) - Main Chrome class documentation
+- [Multiprocessing](/core/multiprocessing) - Using options with multiple processes

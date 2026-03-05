@@ -1,0 +1,469 @@
+---
+title: Custom Options
+description: Learn how to customize ChromeOptions for specific use cases while maintaining undetectability
+---
+
+## Overview
+
+While Undetected works best with default settings, there are legitimate cases where you need to customize Chrome's behavior. This guide shows how to use `ChromeOptions` safely without triggering bot detection.
+
+<Warning>
+From the source code (undetected/__init__.py:58-63):
+
+> Chrome has everything included to work out of the box. It does not need customizations. Any customizations MAY lead to trigger bot mitigation systems.
+
+Use custom options sparingly and test thoroughly.
+</Warning>
+
+## Creating ChromeOptions
+
+Undetected provides its own `ChromeOptions` class that extends Selenium's options:
+
+```python
+import undetected as uc
+
+options = uc.ChromeOptions()
+driver = uc.Chrome(options=options)
+```
+
+<Warning>
+**Never reuse ChromeOptions objects:**
+
+```python
+# ❌ WRONG - Will raise RuntimeError
+options = uc.ChromeOptions()
+driver1 = uc.Chrome(options=options)
+driver2 = uc.Chrome(options=options)  # Error!
+```
+
+Each driver instance requires fresh options.
+</Warning>
+
+## Common Arguments
+
+### Window Size and Position
+
+Control the browser window dimensions:
+
+```python
+import undetected as uc
+
+options = uc.ChromeOptions()
+options.add_argument("--window-size=1920,1080")
+options.add_argument("--start-maximized")
+
+driver = uc.Chrome(options=options)
+```
+
+<Note>
+Undetected automatically adds `--window-size=1920,1080` and `--start-maximized` (undetected/__init__.py:359-360).
+</Note>
+
+### Headless Mode
+
+Run Chrome without a visible window:
+
+```python
+import undetected as uc
+
+# Method 1: Via constructor
+driver = uc.Chrome(headless=True)
+
+# Method 2: Via options
+options = uc.ChromeOptions()
+options.headless = True
+driver = uc.Chrome(options=options)
+```
+
+The library automatically uses the correct headless flag based on Chrome version:
+- Chrome < 108: `--headless=chrome`
+- Chrome >= 108: `--headless=new`
+
+### Language Settings
+
+Set the browser language:
+
+```python
+import undetected as uc
+
+options = uc.ChromeOptions()
+options.add_argument("--lang=es-ES")
+
+driver = uc.Chrome(options=options)
+```
+
+<Note>
+If no language is specified, Undetected automatically uses your system locale or defaults to `en-US` (undetected/__init__.py:315-331).
+</Note>
+
+### Disable Logging
+
+Reduce console output:
+
+```python
+import undetected as uc
+
+options = uc.ChromeOptions()
+options.add_argument("--log-level=3")  # Only fatal errors
+
+driver = uc.Chrome(options=options, log_level=3)
+```
+
+Log levels:
+- `0` - INFO (default)
+- `1` - WARNING
+- `2` - ERROR  
+- `3` - FATAL
+
+### No Sandbox Mode
+
+Required when running as root (Linux):
+
+```python
+import undetected as uc
+
+options = uc.ChromeOptions()
+options.add_argument("--no-sandbox")
+options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+
+driver = uc.Chrome(options=options)
+```
+
+<Note>
+Undetected automatically adds `--no-sandbox` and `--test-type` when `no_sandbox=True` (default) (undetected/__init__.py:342-343).
+</Note>
+
+## User Preferences
+
+Set Chrome preferences using experimental options:
+
+```python
+import undetected as uc
+
+options = uc.ChromeOptions()
+
+# Download settings
+prefs = {
+    "download.default_directory": "/path/to/downloads",
+    "download.prompt_for_download": False,
+    "download.directory_upgrade": True,
+    "safebrowsing.enabled": True
+}
+
+options.set_experimental_option("prefs", prefs)
+driver = uc.Chrome(options=options)
+```
+
+### Common Preferences
+
+#### Disable Images
+
+Speed up page loads:
+
+```python
+prefs = {
+    "profile.managed_default_content_settings.images": 2
+}
+options.set_experimental_option("prefs", prefs)
+```
+
+#### Disable Notifications
+
+```python
+prefs = {
+    "profile.default_content_setting_values.notifications": 2
+}
+options.set_experimental_option("prefs", prefs)
+```
+
+#### Set Download Behavior
+
+```python
+prefs = {
+    "download.default_directory": "/tmp/downloads",
+    "download.prompt_for_download": False,
+    "plugins.always_open_pdf_externally": True
+}
+options.set_experimental_option("prefs", prefs)
+```
+
+## User Data Directory
+
+Use a persistent profile to maintain cookies and settings:
+
+```python
+import undetected as uc
+
+# Method 1: Via constructor (recommended)
+driver = uc.Chrome(user_data_dir="/path/to/profile")
+
+# Method 2: Via options argument
+options = uc.ChromeOptions()
+options.add_argument("--user-data-dir=/path/to/profile")
+driver = uc.Chrome(options=options)
+
+# Method 3: Via options property (deprecated)
+options = uc.ChromeOptions()
+options.user_data_dir = "/path/to/profile"
+driver = uc.Chrome(options=options)
+```
+
+<Warning>
+Method 3 (using the property) is deprecated and may stop working in future versions. Use the constructor parameter instead.
+</Warning>
+
+### Profile Lifecycle
+
+- **No `user_data_dir` specified:** A temporary profile is created and deleted on `quit()`
+- **`user_data_dir` specified:** The profile persists after `quit()`
+
+## Binary Location
+
+Use a specific Chrome installation:
+
+```python
+import undetected as uc
+
+# Via constructor
+driver = uc.Chrome(browser_executable_path="/usr/bin/google-chrome-stable")
+
+# Via options
+options = uc.ChromeOptions()
+options.binary_location = "/usr/bin/google-chrome-stable"
+driver = uc.Chrome(options=options)
+```
+
+<Note>
+If not specified, Undetected automatically finds Chrome in standard locations.
+</Note>
+
+## Capabilities
+
+Set custom capabilities for advanced scenarios:
+
+```python
+import undetected as uc
+
+options = uc.ChromeOptions()
+
+# Platform-specific capability
+options.set_capability("platformName", "linux")
+
+# Page load strategy
+options.set_capability("pageLoadStrategy", "eager")
+
+driver = uc.Chrome(options=options)
+```
+
+### Page Load Strategies
+
+- `normal` (default): Wait for all resources
+- `eager`: Wait for DOM, but not all resources
+- `none`: Return immediately
+
+## Chrome DevTools Protocol (CDP)
+
+### Enable CDP Events
+
+Listen to browser events:
+
+```python
+import undetected as uc
+
+def handle_network_event(data):
+    print(f"Network event: {data}")
+
+driver = uc.Chrome(enable_cdp_events=True)
+driver.add_cdp_listener("Network.dataReceived", handle_network_event)
+
+driver.get("https://example.com")
+driver.quit()
+```
+
+<Note>
+When `enable_cdp_events=True`, the library automatically sets performance and browser logging capabilities (undetected/__init__.py:244-246).
+</Note>
+
+### Execute CDP Commands
+
+Direct CDP command execution:
+
+```python
+import undetected as uc
+import base64
+
+driver = uc.Chrome()
+driver.get("https://example.com")
+
+# Generate PDF
+pdf_data = driver.execute_cdp_cmd("Page.printToPDF", {})
+with open("page.pdf", "wb") as f:
+    f.write(base64.b64decode(pdf_data["data"]))
+
+driver.quit()
+```
+
+## Proxy Configuration
+
+Use a proxy server:
+
+```python
+import undetected as uc
+
+options = uc.ChromeOptions()
+options.add_argument("--proxy-server=http://proxy.example.com:8080")
+
+driver = uc.Chrome(options=options)
+```
+
+With authentication:
+
+```python
+import undetected as uc
+from selenium.webdriver.common.proxy import Proxy, ProxyType
+
+proxy = Proxy()
+proxy.proxy_type = ProxyType.MANUAL
+proxy.http_proxy = "user:pass@proxy.example.com:8080"
+proxy.ssl_proxy = "user:pass@proxy.example.com:8080"
+
+options = uc.ChromeOptions()
+proxy.add_to_capabilities(options.to_capabilities())
+
+driver = uc.Chrome(options=options)
+```
+
+## Advanced Element Representation
+
+Improve debugging with human-readable element representations:
+
+```python
+import undetected as uc
+
+driver = uc.Chrome(advanced_elements=True)
+driver.get("https://example.com")
+
+element = driver.find_element("id", "my-link")
+
+# Default representation:
+# <selenium.webdriver.remote.webelement.WebElement (session="...", element="...")>
+
+# Advanced representation:
+print(element)
+# <WebElement(<a class="link" href="#" id="my-link">)>
+```
+
+<Warning>
+This feature may slow down operations when retrieving large numbers of elements.
+</Warning>
+
+## Suppress Welcome Dialogs
+
+Disable first-run dialogs (enabled by default):
+
+```python
+import undetected as uc
+
+# Dialogs are suppressed by default
+driver = uc.Chrome()  # suppress_welcome=True (default)
+
+# To enable welcome dialogs
+driver = uc.Chrome(suppress_welcome=False)
+```
+
+When enabled, adds:
+- `--no-default-browser-check`
+- `--no-first-run`
+
+## Complete Configuration Example
+
+Here's a comprehensive example combining multiple options:
+
+```python
+import undetected as uc
+import os
+
+# Set up options
+options = uc.ChromeOptions()
+
+# Window settings
+options.add_argument("--window-size=1920,1080")
+options.add_argument("--start-maximized")
+
+# Performance
+options.add_argument("--disable-dev-shm-usage")
+options.add_argument("--no-sandbox")
+
+# Language
+options.add_argument("--lang=en-US")
+
+# Preferences
+prefs = {
+    "download.default_directory": os.path.expanduser("~/Downloads"),
+    "download.prompt_for_download": False,
+    "profile.default_content_setting_values.notifications": 2,
+    "profile.managed_default_content_settings.images": 1,  # Enable images
+}
+options.set_experimental_option("prefs", prefs)
+
+# Create driver
+driver = uc.Chrome(
+    options=options,
+    user_data_dir="/path/to/profile",
+    headless=False,
+    enable_cdp_events=False,
+    advanced_elements=False,
+    log_level=1,
+)
+
+driver.get("https://example.com")
+driver.quit()
+```
+
+## Testing Custom Options
+
+Always test your custom configuration against bot detection:
+
+```python
+import undetected as uc
+
+options = uc.ChromeOptions()
+# ... add your custom options ...
+
+driver = uc.Chrome(options=options)
+
+# Test against bot detection
+driver.get("https://bot.incolumitas.com")
+driver.get("https://nowsecure.nl")
+
+# Check for detection
+print(driver.page_source)
+
+driver.quit()
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Minimize customizations">
+    Only add options that are absolutely necessary. Each custom argument increases the risk of detection.
+  </Accordion>
+  
+  <Accordion title="Avoid extensions">
+    Browser extensions significantly increase your detection fingerprint. They are not recommended and may lower undetectability.
+  </Accordion>
+  
+  <Accordion title="Test thoroughly">
+    Always test custom configurations against real bot detection systems before deploying to production.
+  </Accordion>
+  
+  <Accordion title="Use fresh options">
+    Create a new `ChromeOptions()` instance for each driver. Never reuse options objects.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- Review [Basic Usage](/guides/basic-usage) for fundamental patterns
+- Set up [Multiprocessing](/guides/multiprocessing-setup) with custom options
+- Check [Troubleshooting](/guides/troubleshooting) if options cause issues
