@@ -1,0 +1,97 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Undetected",
+  "projectDescription": "Undetectable selenium chromedriver for stealth web automation",
+  "theme": "aspen",
+  "primaryColor": "#fbd342",
+  "lightColor": "#3b73a4",
+  "darkColor": "#e4e3de",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "core/chrome-driver",
+              "core/options",
+              "core/patcher",
+              "core/multiprocessing"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/cdp-events",
+              "advanced/reactor",
+              "advanced/headless-mode",
+              "advanced/advanced-elements"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/basic-usage",
+              "guides/multiprocessing-setup",
+              "guides/custom-options",
+              "guides/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Classes",
+            "pages": [
+              "api/chrome",
+              "api/chrome-options",
+              "api/patcher",
+              "api/reactor",
+              "api/cdp"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/webelement",
+              "api/devtool"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Undetectable ChromeDriver bypassing bot detection",
+    "Automatic driver download and patching",
+    "Chrome DevTools Protocol (CDP) event handling",
+    "Multiprocessing support for parallel automation",
+    "Headless mode with stealth configurations",
+    "Custom ChromeOptions for advanced configurations"
+  ],
+  "publicApiSurface": [
+    "Chrome",
+    "ChromeOptions",
+    "Patcher",
+    "Patcher.patch()",
+    "Reactor",
+    "CDP",
+    "Chrome.add_cdp_listener()",
+    "Chrome.clear_cdp_listeners()",
+    "Chrome.reconnect()",
+    "Chrome.find_elements_recursive()",
+    "Chrome.tab_new()",
+    "Chrome.window_new()"
+  ]
+}
